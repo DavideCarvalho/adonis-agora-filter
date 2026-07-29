@@ -73,6 +73,45 @@ describe('applyFilter — allow-listing', () => {
     ).toThrow(InvalidColumnFilterError);
   });
 
+  it('drops a relation-path distinct even when the path is filterable', () => {
+    const qb = new MockQueryBuilder();
+    // `posts.title` is filterable (relation filtering whitelists it), but Lucid
+    // compiles relation filters to a correlated EXISTS — the relation never
+    // enters the outer FROM, so there is no `posts` alias to project.
+    applyFilter(qb, { distinct: ['posts.title', 'city'] }, { allowed: '*' });
+    expect(qb.find('distinct')?.args).toEqual(['city']);
+  });
+
+  it('adds no distinct at all when every requested field is a relation path', () => {
+    const qb = new MockQueryBuilder();
+    applyFilter(qb, { distinct: ['posts.title'] }, { allowed: '*' });
+    expect(qb.find('distinct')).toBeUndefined();
+  });
+
+  it('throws with the join as the stated cause on a relation-path distinct', () => {
+    const qb = new MockQueryBuilder();
+    expect(() =>
+      applyFilter(qb, { distinct: ['posts.title'] }, { allowed: '*', throwOnInvalid: true }),
+    ).toThrow(InvalidColumnFilterError);
+    // Not an allow-list message — it must send the reader to the join, not to
+    // `allowed`.
+    expect(() =>
+      applyFilter(qb, { distinct: ['posts.title'] }, { allowed: '*', throwOnInvalid: true }),
+    ).toThrow(/relation path/i);
+  });
+
+  it('keeps a distinct qualified by the ROOT table — that alias is in the FROM', () => {
+    const qb = new MockQueryBuilder();
+    applyFilter(qb, { distinct: ['users.city'] }, { allowed: '*', table: 'users' });
+    expect(qb.find('distinct')?.args).toEqual(['users.city']);
+  });
+
+  it('drops a to-many aggregate path from distinct (also not in the FROM)', () => {
+    const qb = new MockQueryBuilder();
+    applyFilter(qb, { distinct: ['posts.$count'] }, { allowed: '*' });
+    expect(qb.find('distinct')).toBeUndefined();
+  });
+
   it('adds no distinct when none is requested', () => {
     const qb = new MockQueryBuilder();
     applyFilter(
