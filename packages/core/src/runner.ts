@@ -245,10 +245,38 @@ function applyFilterConditions(
 }
 
 /**
+ * Is this (alias-resolved) field projectable in the outer SELECT?
+ *
+ * A `where` on a relation path is translated by `applyLeaf` into a nested Lucid
+ * `whereHas`, which compiles to a **correlated EXISTS subquery** — the relation
+ * is never added to the outer `FROM`. A projection has no such escape hatch: the
+ * outer SELECT can only name a column of something the outer FROM holds. So
+ * `distinct=posts.title` on a spec that (correctly) whitelists `posts.title` for
+ * filtering would emit `select distinct "posts"."title" from "users"` and
+ * Postgres answers `missing FROM-clause entry for table "posts"` — a 500 driven
+ * by user input.
+ *
+ * The one qualifier that IS in the outer FROM is the root table itself (Lucid
+ * gives the main table no generated alias, so the table name is the alias — the
+ * same fact {@link FilterConfig.table} already encodes for computed fields).
+ * A single-segment name is a plain root column and always projectable.
+ */
+function isProjectable(field: string, config: FilterConfig): boolean {
+  const dot = field.indexOf('.');
+  if (dot === -1) return true;
+  return config.table !== undefined && field.slice(0, dot) === config.table;
+}
+
+/**
  * Resolve the alias-mapped, allow-listed distinct fields for the request. A
  * distinct field is a projected column, so it is gated by the SAME `allowed`
  * boundary a `where` field is — aliases resolve first, then the allow-list;
  * unknown fields are dropped (or rejected under `throwOnInvalid`).
+ *
+ * A field that clears the allow-list but is not projectable
+ * ({@link isProjectable}) is dropped/rejected too, with its OWN message: it is
+ * not an allow-list problem, so pointing the reader at `allowed` would send them
+ * to edit the wrong thing.
  */
 function resolveSafeDistinct(fields: string[], config: FilterConfig): string[] {
   const throwOnInvalid = config.throwOnInvalid ?? false;
@@ -258,11 +286,22 @@ function resolveSafeDistinct(fields: string[], config: FilterConfig): string[] {
 
   const safe: string[] = [];
   for (const field of aliased) {
-    if (isAllowed(field, config.allowed)) {
-      if (!safe.includes(field)) safe.push(field);
-    } else if (throwOnInvalid) {
-      throw new InvalidColumnFilterError(`Field "${field}" is not a distinct-able column.`);
+    if (!isAllowed(field, config.allowed)) {
+      if (throwOnInvalid) {
+        throw new InvalidColumnFilterError(`Field "${field}" is not a distinct-able column.`);
+      }
+      continue;
     }
+    if (!isProjectable(field, config)) {
+      if (throwOnInvalid) {
+        const relation = field.slice(0, field.indexOf('.'));
+        throw new InvalidColumnFilterError(
+          `Field "${field}" cannot be used for distinct: it is a relation path, and a relation is filtered through a correlated EXISTS subquery, never joined into the query's FROM — so there is no "${relation}" table whose column the SELECT could project. This is NOT an allow-list problem: filtering on "${field}" works, projecting it does not, and adding it to \`allowed\` will not change that. Use a column of the root table for distinct.`,
+        );
+      }
+      continue;
+    }
+    if (!safe.includes(field)) safe.push(field);
   }
   return safe;
 }

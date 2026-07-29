@@ -125,6 +125,20 @@ const rows = await query.distinct('status').select('status')
 
 The [client builder](/docs/filter/guides/client) has a matching `.distinct(...)` that serializes the requested columns; read them off the parsed request and apply them with Lucid's own `distinct()`.
 
+### `distinct` takes root-table columns only
+
+A `distinct` field must be a column the query's `FROM` actually holds — a column of the root table (optionally qualified with the root table's own name).
+
+A **relation path is refused**, even though the same path is perfectly valid to *filter* on. [Relation filtering](/docs/filter/definitions/relations) compiles to a correlated `EXISTS` subquery, so the relation is never joined into the outer query and there is no alias to project a column from — `distinct=posts.title` would emit `select distinct "posts"."title" from "users"`, which Postgres rejects with `missing FROM-clause entry for table "posts"`. To-many [aggregate paths](/docs/filter/definitions/aggregates) (`posts.$count`) are refused for the same reason.
+
+A refused field is dropped (the rest of the `distinct` list still applies), or raises `InvalidColumnFilterError` when the spec sets `throwOnInvalid`. Adding the path to `filterable`/`relations` will not change this — it is not an allow-list decision.
+
+<Callout type="info">
+  `distinct` and `paginate()` do not agree on the total: Lucid's count leg
+  rebuilds the SELECT, so `total` counts the **un-deduped** rows while the page
+  itself is deduped. Run your own `countDistinct` when the total has to match.
+</Callout>
+
 ---
 
 ## Database (non-model) queries
