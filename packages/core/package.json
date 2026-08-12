@@ -5,7 +5,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DavideCarvalho/adonis-filter.git",
+    "url": "git+https://github.com/DavideCarvalho/adonis-agora-filter.git",
     "directory": "packages/core"
   },
   "author": "Davi Carvalho <davi@goflip.ai>",
