@@ -56,15 +56,15 @@
     }
   },
   "devDependencies": {
-    "@adonisjs/core": "^7.3.0",
+    "@adonisjs/core": "7.4.0",
     "@adonisjs/lucid": "22.4.2",
-    "@types/luxon": "^3.7.2",
-    "@types/node": "^20.0.0",
-    "@types/pg": "^8.20.0",
-    "luxon": "^3.7.2",
-    "pg": "^8.22.0",
-    "typescript": "^5.4.0",
-    "vitest": "^3.0.0"
+    "@types/luxon": "3.7.4",
+    "@types/node": "20.19.43",
+    "@types/pg": "8.21.0",
+    "luxon": "3.7.2",
+    "pg": "8.23.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
   },
   "engines": {
     "node": ">=20.6.0"
