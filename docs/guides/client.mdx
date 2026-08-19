@@ -370,6 +370,60 @@ TanStack's `pagination.pageIndex` is 0-based and is passed straight to the build
 
 ---
 
+## The rest of the public surface
+
+Beyond the builder, the package exports the pieces it is built from, so you can
+reach for one without adopting the whole chain.
+
+### Serializers
+
+`toQueryString()` is a composition of two exported functions. Use them directly
+when you already hold the data in one of their shapes:
+
+```ts
+import { flatObjectToQueryString, columnFiltersToQueryString } from '@adonis-agora/filter-client'
+
+// A flat { key: value | value[] | { op: value } } map → a query string.
+flatObjectToQueryString({ 'filter[age]': { gte: 18 }, sort: '-createdAt' })
+
+// A ColumnFilter[] (groups and all) → the indexed `where[i][...]` notation.
+columnFiltersToQueryString([{ field: 'age', operator: 'gte', value: 18 }])
+// → where[0][field]=age&where[0][operator]=gte&where[0][value]=18
+```
+
+`columnFiltersToQueryString` is what the builder falls back to once any OR/AND
+group is present, since groups are not representable as a flat object.
+
+### Operator validation
+
+The builder validates every call it receives; the same checks are exported for
+code that assembles filters before handing them over — a dynamic filter UI, say,
+where the operator comes from a dropdown:
+
+```ts
+import { validateOperatorValue, validateAddOperator, RANGE_OPERATORS } from '@adonis-agora/filter-client'
+
+validateOperatorValue('in', 'active')     // throws: `in` expects an array
+validateOperatorValue('isNull', 'x')      // throws: unary operators take no value
+validateAddOperator('equals')             // throws: add() is for range operators
+RANGE_OPERATORS.has('gte')                // true — the set `add()` accepts
+```
+
+Both throw a descriptive `Error` and return `void` on success, so they read as
+assertions.
+
+### Types
+
+| Export | What it is |
+|---|---|
+| `FilterQueryResult`, `SortItem`, `OffsetPagination` | the shapes `build()` returns |
+| `ColumnFilter`, `FilterOperator`, `FILTER_OPERATORS` | one condition, the operator union, and the runtime list of every operator |
+| `TypedFilterQuery`, `TypedFilterQueryBuilder` | the generated typed builder's interface — what [`make:filter-client`](/docs/filter/codegen) emits against |
+| `FieldTypeKind`, `FilterFieldTypes` | the field-kind declarations that drive per-field operator narrowing |
+| `ValueAt`, `Base`, `OperatorsFor`, `ValueForOp`, `StringFieldsOf`, `OrderableFieldsOf` | the type-level helpers behind that narrowing, for building your own typed wrappers |
+
+---
+
 ## Round trip
 
 The client and server agree on the wire format by construction — what `.toQueryString()` emits is what `parseFilterRequest` reads:

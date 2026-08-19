@@ -249,3 +249,14 @@ import { escapeLike } from '@adonis-agora/filter'
 
 escapeLike('50%_off') // '50\\%\\_off'
 ```
+
+`escapeLike(value, dialect?)` takes an optional second argument, because the two
+major SQL families spell LIKE escaping differently:
+
+| `dialect` | Escapes | How |
+|---|---|---|
+| `'standard'` (default) | `%`, `_`, `\` | backslash — `50\%\_off` |
+| `'mssql'` | `%`, `_`, `[` | bracket — `50[%][_]off` |
+
+The adapter always uses `'standard'`, which is what Postgres, MySQL and SQLite
+want. Pass `'mssql'` only when you are building a pattern for SQL Server by hand.

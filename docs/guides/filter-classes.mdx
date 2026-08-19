@@ -31,12 +31,43 @@ Because the policy is just an object, you can store it next to the model, share 
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `allowed` | `string[] \| '*'` | **required** | Columns clients may filter on. `'*'` allows any column (use with care). |
-| `sortable` | `string[] \| '*'` | falls back to `allowed` | Columns clients may sort on. |
+| `allowed` | `AllowList` | **required** | Columns clients may filter on. |
+| `sortable` | `AllowList` | falls back to `allowed` | Columns clients may sort on. |
 | `searchable` | `string[]` | `[]` (search disabled) | Columns the free-text `search` term scans with ILIKE. |
+| `aliases` | `FieldAliases` | `{}` | Remap a public field name to a real target **before** allow-listing. See [Field Aliases](/docs/filter/definitions/aliases). |
+| `fieldTypes` | `Record<string, { kind?: FilterFieldKind }>` | `{}` | Declare a column's value kind so filter values are coerced to it. A value that cannot be coerced is treated exactly like a disallowed field — which turns a Postgres cast error (a 500) into a normal drop or a 400. |
+| `computed` | `ComputedFields` | `{}` | Virtual fields backed by SQL you write. A declared alias becomes filterable and sortable **without** appearing in `allowed` — the declaration *is* its allow-list. See [Computed Fields](/docs/filter/definitions/computed). |
+| `fullText` | `FullTextSearchConfig` | unset (ILIKE) | Route `search` through Postgres tsvector matching instead of the `searchable` ILIKE scan. See [Full-Text Search](/docs/filter/search/full-text). |
+| `vectorSimilarity` | `VectorSimilarityConfig` | unset | Rank rows by pgvector distance to the embedding in `input.vectorSimilarity`. Independent of text `search`. See [Vector Similarity](/docs/filter/search/vector-similarity). |
+| `table` | `string` | unset | The root table's SQL alias. Required for function-form computed fields and to-many aggregates, whose correlated subqueries must reference the outer row — and it is what lets `distinct` accept a `users.city`-style qualified column. |
 | `defaultSize` | `number` | `25` | Page size when the request omits `size`. |
 | `maxSize` | `number` | `100` | Hard upper bound — `size` is clamped to `[1, maxSize]`. |
 | `throwOnInvalid` | `boolean` | `false` | Throw `InvalidColumnFilterError` on a disallowed field instead of silently dropping it. |
+
+### `AllowList` — three forms
+
+`allowed` and `sortable` accept more than an array:
+
+```ts
+type AllowList = '*' | string[] | ((field: string) => boolean)
+```
+
+| Form | Meaning |
+|---|---|
+| `'*'` | allow any field (use with care — see the warning below) |
+| `string[]` | allow exactly these field names |
+| `(field) => boolean` | allow every field the predicate accepts |
+
+The predicate form expresses rules a flat list cannot — most usefully, whitelisting a whole family of relation paths under a depth cap:
+
+```ts
+applyFilter(query, input, {
+  // any base column, plus one hop into `posts` — but no deeper
+  allowed: (field) => !field.includes('.') || /^posts\.[a-z]+$/i.test(field),
+})
+```
+
+It receives the **already alias-resolved** target, never the client-facing alias key, so a predicate is written against your real column names.
 
 ---
 
