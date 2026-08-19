@@ -23,7 +23,11 @@ function recordingCommand() {
   return {
     providers,
     commands,
-    command: { async createCodemods() { return codemods; } },
+    command: {
+      async createCodemods() {
+        return codemods;
+      },
+    },
   };
 }
 
@@ -31,7 +35,6 @@ describe('configure', () => {
   it('registers the provider that installs the Lucid macros', async () => {
     const recorder = recordingCommand();
 
-    // biome-ignore lint/suspicious/noExplicitAny: structural stand-in for ace's Configure command.
     await configure(recorder.command as any);
 
     expect(recorder.providers).toEqual(['@adonis-agora/filter/filter_provider']);
@@ -40,7 +43,6 @@ describe('configure', () => {
   it('registers the commands barrel so `make:filter-client` is discoverable', async () => {
     const recorder = recordingCommand();
 
-    // biome-ignore lint/suspicious/noExplicitAny: structural stand-in for ace's Configure command.
     await configure(recorder.command as any);
 
     expect(recorder.commands).toEqual(['@adonis-agora/filter/commands']);
@@ -56,7 +58,6 @@ describe('configure', () => {
     };
     const recorder = recordingCommand();
 
-    // biome-ignore lint/suspicious/noExplicitAny: structural stand-in for ace's Configure command.
     await configure(recorder.command as any);
 
     // A specifier the package does not export resolves to nothing at boot, so
