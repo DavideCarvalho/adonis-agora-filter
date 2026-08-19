@@ -1,7 +1,7 @@
 {
   "name": "@adonis-agora/filter-client",
   "version": "0.2.0",
-  "description": "Client-side query builder for @agora/filter — build filter query strings, with optional TanStack Table state sync.",
+  "description": "Client-side query builder for @adonis-agora/filter — build filter query strings, with optional TanStack Table state sync.",
   "license": "MIT",
   "repository": {
     "type": "git",
