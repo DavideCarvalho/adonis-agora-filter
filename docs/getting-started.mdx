@@ -54,7 +54,9 @@ npm install @adonis-agora/filter-client
 ```
 
 <Callout type="info">
-`@adonis-agora/filter` has **no runtime dependency on Lucid** — it targets a structural `QueryBuilderLike` interface that any Lucid query builder satisfies. The free functions need no service provider and nothing in `adonisrc.ts`. The package *does* ship an optional `./filter_provider` that registers chainable query-builder macros; register it only if you want that sugar (see [Provider & Macros](/docs/filter/guides/provider)). `node ace add @adonis-agora/filter` registers it for you.
+`@adonis-agora/filter` has **no runtime dependency on Lucid** — it targets a structural `QueryBuilderLike` interface that any Lucid query builder satisfies. The free functions need no service provider and nothing in `adonisrc.ts`, so the `npm`/`pnpm` tabs above are enough to follow this guide.
+
+`node ace add` additionally runs the configure hook, which writes two entries into `adonisrc.ts`: the optional [`./filter_provider`](/docs/filter/guides/provider) (chainable query-builder macros) and the commands barrel that makes [`make:filter-client`](/docs/filter/codegen) discoverable. Install with `npm`/`pnpm` and you can add either by hand later.
 </Callout>
 
 ---
@@ -68,11 +70,13 @@ import { parseFilterRequest } from '@adonis-agora/filter'
 
 const input = parseFilterRequest(request.qs())
 // {
-//   filters?: ColumnFilter[]
-//   sort?:    { field: string; direction: 'asc' | 'desc' }[]
-//   search?:  string
-//   page?:    number
-//   size?:    number
+//   filters?:  ColumnFilter[]
+//   sort?:     { field: string; direction: 'asc' | 'desc' }[]
+//   search?:   string
+//   distinct?: string[]            // DISTINCT projection, applied by applyFilter
+//   page?:     number
+//   size?:     number
+//   vectorSimilarity?: readonly number[]   // set in code, not from the query string
 // }
 ```
 
@@ -86,6 +90,7 @@ It understands every shape the client builder emits:
 | `filter[age][gte]=18` | `{ field: 'age', operator: 'gte', value: '18' }` |
 | `sort=-createdAt,name` | `[{ field: 'createdAt', direction: 'desc' }, { field: 'name', direction: 'asc' }]` |
 | `search=fleet` | `search: 'fleet'` |
+| `distinct=city,tier` (or `distinct[]=…`) | `distinct: ['city', 'tier']` |
 | `page=2&size=50` (or `page[number]`/`page[size]`) | `page: 2, size: 50` |
 
 ---

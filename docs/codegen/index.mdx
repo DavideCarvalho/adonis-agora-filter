@@ -71,6 +71,22 @@ The command loads your app's declared specs and writes each generated client to 
 <Steps>
 <Step>
 
+Make sure the command is registered. Ace only sees commands an app opts into, so `make:filter-client` appears in `node ace list` **only** once the package's commands barrel is in `adonisrc.ts`:
+
+```ts title="adonisrc.ts"
+{
+  commands: [
+    // ...
+    () => import('@adonis-agora/filter/commands'),
+  ],
+}
+```
+
+`node ace add @adonis-agora/filter` adds that entry for you; add it by hand if the package was installed with a plain `npm install`. Without it, `node ace make:filter-client` fails with "command not found", which reads like the command does not exist.
+
+</Step>
+<Step>
+
 Declare the manifest (`FilterClientManifest`) — each entry is a `defineFilter(...)` spec plus optional `fieldTypes` / overrides:
 
 ```ts title="config/filter.ts"

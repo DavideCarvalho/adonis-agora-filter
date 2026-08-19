@@ -124,11 +124,32 @@ Groups are emitted as a `ColumnFilter` with an empty `field` and an `OR`/`AND` a
 filterQuery()
   .sort('createdAt', 'desc')   // or .sortDesc('createdAt') / .sortAsc('name')
   .search('fleet')             // global term
-  .include('role', 'posts')    // relations to eager-load (deduped)
+  .include('role', 'posts')    // relations the caller should preload (deduped)
   .distinct('status')          // distinct projection (deduped)
   .page(0, 25)                 // 0-based page index, size (default 25)
   .set('extraKey', 'value')    // arbitrary extra key in the output
 ```
+
+<Callout type="warn" title="`include` is a request, not an action">
+`.include(...)` only carries relation names across the wire. Nothing in this
+library preloads them: `parseFilterRequest` drops `include` entirely, and
+`parseSpatieRequest` returns it as `input.include` but no runner consumes it.
+Eager-loading stays your call, because only you know which relations are safe to
+expose — read the list, check it against your own allow-list, and call Lucid's
+`preload` yourself:
+
+```ts
+const input = parseSpatieRequest(request.qs())
+const query = User.query()
+
+applyFilter(query, input, { allowed: ['name', 'status'] })
+for (const relation of input.include ?? []) {
+  if (PRELOADABLE.includes(relation)) query.preload(relation as any)
+}
+```
+
+The same goes for `select` (JSON:API sparse fieldsets) — it is parsed, never applied.
+</Callout>
 
 <Callout type="warn">
 `.page(page, size)` uses a **0-based** page index (TanStack convention). The server's `applyFilter` resolves a **1-based** page for Lucid's `paginate()`. If you send the client's page straight through, add `1` at the boundary — or use `toQueryString()`, where the page is passed verbatim and you normalize server-side.
