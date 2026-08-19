@@ -1,7 +1,7 @@
 ---
 title: Client Codegen
 icon: Wand
-description: Generate a typed @agora/filter-client builder from a FilterSpec — generateFilterClient (pure string transform) and the make:filter-client ace command that writes the modules to disk.
+description: Generate a typed @adonis-agora/filter-client builder from a FilterSpec — generateFilterClient (pure string transform) and the make:filter-client ace command that writes the modules to disk.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
@@ -56,7 +56,7 @@ A `FilterSpec` carries the allow-list but not column value **types** (Lucid mode
 | `{ typeRef: 'Role' }` | the named type verbatim (wins over everything) |
 | `{ nullable: true }` | appends `\| null` |
 
-Options: `name` (base identifier), `fieldTypes`, `clientModule` (import specifier, default `@agora/filter-client`), `maxDepth` (relation-path cap, default `spec.maxDepth`), `banner` (the "DO NOT EDIT" header, default `true`).
+Options: `name` (base identifier), `fieldTypes`, `clientModule` (import specifier, default `@adonis-agora/filter-client`), `maxDepth` (relation-path cap, default `spec.maxDepth`), `banner` (the "DO NOT EDIT" header, default `true`).
 
 <Callout type="info">
 `filterableFieldPaths(spec)` and `sortableFieldPaths(spec)` are exported if you just want the enumerated field-path lists (e.g. to build your own artifact). A `'*'` allow-list can't be enumerated, so the emitter falls back to a permissive `string` field union.
@@ -69,6 +69,22 @@ Options: `name` (base identifier), `fieldTypes`, `clientModule` (import specifie
 The command loads your app's declared specs and writes each generated client to disk. Point it at a module that exports a `filters` manifest:
 
 <Steps>
+<Step>
+
+Make sure the command is registered. Ace only sees commands an app opts into, so `make:filter-client` appears in `node ace list` **only** once the package's commands barrel is in `adonisrc.ts`:
+
+```ts title="adonisrc.ts"
+{
+  commands: [
+    // ...
+    () => import('@adonis-agora/filter/commands'),
+  ],
+}
+```
+
+`node ace add @adonis-agora/filter` adds that entry for you; add it by hand if the package was installed with a plain `npm install`. Without it, `node ace make:filter-client` fails with "command not found", which reads like the command does not exist.
+
+</Step>
 <Step>
 
 Declare the manifest (`FilterClientManifest`) — each entry is a `defineFilter(...)` spec plus optional `fieldTypes` / overrides:
@@ -126,4 +142,4 @@ const qs = peopleFilterQuery()
   .toQueryString()
 ```
 
-The generated module targets `@agora/filter-client`'s `filterQueryTyped` factory — the same runtime the [Client Builder](/docs/filter/guides/client) documents.
+The generated module targets `@adonis-agora/filter-client`'s `filterQueryTyped` factory — the same runtime the [Client Builder](/docs/filter/guides/client) documents.

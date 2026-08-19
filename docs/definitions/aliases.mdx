@@ -6,7 +6,7 @@ description: Remap a client-facing field name to a different target column befor
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-**Field aliases** remap a client-facing field name to a different resolved target — a base column, a relation path, or a JSON sub-path. The alias is a public name; the target is what your schema actually exposes. This lets the query vocabulary stay stable while the underlying columns move.
+**Field aliases** remap a client-facing field name to a different resolved target — a base column or a relation path. The alias is a public name; the target is what your schema actually exposes. This lets the query vocabulary stay stable while the underlying columns move.
 
 ---
 
@@ -23,10 +23,22 @@ export const userFilter = defineFilter({
   aliases: {
     legacyStatus: 'status',        // rename a column publicly
     postTitle: 'posts.title',      // flatten a relation path into a single alias
-    tier: 'metadata.tier',         // point at a JSON sub-path
   },
 })
 ```
+
+<Callout type="warn" title="A dot in the target means a relation, not a JSON path">
+There is one reading of a dotted target: everything before the last dot is a
+**relation hop**. `'posts.title'` compiles to `whereHas('posts', …)`, which is
+why the `posts` relation has to be declared in `relations`.
+
+So an alias cannot reach inside a JSON or `jsonb` column. Writing
+`tier: 'metadata.tier'` does not read the `tier` key out of a `metadata` column —
+it looks for a **relation named `metadata`**, and on a model that has none, the
+query fails at the database. Filtering on JSON contents needs a real column (a
+generated one, or an extracted one), or a [computed field](/docs/filter/definitions/computed)
+whose SQL you write yourself.
+</Callout>
 
 Now `?filter[legacyStatus]=active` resolves to the `status` column, and `?filter[postTitle]=hi` resolves to the whitelisted `posts.title` relation path (translated to a `whereHas` subquery).
 

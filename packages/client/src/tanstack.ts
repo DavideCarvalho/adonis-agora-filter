@@ -4,10 +4,10 @@ import type { FilterQueryResult } from './filter-query-builder.js';
 import type { FilterOperator } from './types.js';
 
 /**
- * Resolves the @agora/filter operator for a vanilla TanStack column filter.
+ * Resolves the @adonis-agora/filter operator for a vanilla TanStack column filter.
  *
  * Vanilla TanStack column filters are `{ id, value }` with **no operator** —
- * the operator lives in the column's `filterFn`. @agora/filter needs one, so
+ * the operator lives in the column's `filterFn`. @adonis-agora/filter needs one, so
  * this is the seam: supply your own to read `column.meta`, map a symbol
  * vocabulary, etc.
  */

@@ -55,7 +55,9 @@ const input = parseFilterRequest(request.qs())
   </Tab>
   <Tab value="Request body (POST)">
 ```ts
-// POST /users/search  with a JSON body in the same Spatie shape
+// POST /users/search — the body may be the flat Spatie shape,
+// or the structured object the client builder's .build() returns:
+//   { filter: { where: [...] }, sort: [...], paginate: { page, size } }
 const input = parseFilterRequest(request.body())
 ```
   </Tab>
@@ -68,7 +70,7 @@ const input = parseFilterRequest(request.input('query', {}))
 </Tabs>
 
 <Callout type="info">
-A `GET` endpoint pairs with the client builder's `.toQueryString()`; a `POST` search endpoint pairs with `.build()` (the structured `{ filter: { where }, sort, paginate }` body). Both shapes are understood by `parseFilterRequest`. See the [Client Builder](/docs/filter/guides/client).
+A `GET` endpoint pairs with the client builder's `.toQueryString()`; a `POST` search endpoint pairs with `.build()` (the structured `{ filter: { where }, sort, paginate }` body). `parseFilterRequest` reads both, so the same controller body serves either — see [the structured shape](/docs/filter/guides/operators#the-structured-post-shape) and the [Client Builder](/docs/filter/guides/client). `include` is the one key it does not act on: eager-loading stays your `preload` call.
 </Callout>
 
 ---

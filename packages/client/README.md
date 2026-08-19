@@ -1,11 +1,11 @@
-# `@agora/filter-client`
+# `@adonis-agora/filter-client`
 
-Framework-agnostic client-side query builder for [`@agora/filter`](https://github.com/DavideCarvalho/adonis-filter)
+Framework-agnostic client-side query builder for [`@adonis-agora/filter`](https://github.com/DavideCarvalho/adonis-filter)
 — fluently build filter/sort/pagination query strings, with optional TanStack
 Table state sync.
 
 ```ts
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const qs = filterQuery()
   .where('status', 'eq', 'active')

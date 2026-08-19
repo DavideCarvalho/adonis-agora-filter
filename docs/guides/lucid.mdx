@@ -12,7 +12,7 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 ## The `QueryBuilderLike` contract
 
-The adapter only uses the `where*` and `orderBy` family. The exported `QueryBuilderLike` interface declares exactly that subset:
+The adapter drives the `where*`, `orderBy` and projection family. The exported `QueryBuilderLike` interface declares exactly that subset — every member is **required**, so this is the full list you must implement if you write your own:
 
 ```ts
 interface QueryBuilderLike {
@@ -20,6 +20,8 @@ interface QueryBuilderLike {
   where(column: string, value: unknown): QueryBuilderLike;
   where(column: string, operator: string, value: unknown): QueryBuilderLike;
   orWhere(callback: (qb: QueryBuilderLike) => void): QueryBuilderLike;
+  // biome-ignore lint: `relation` is `any` so real Lucid builders satisfy this.
+  whereHas(relation: any, callback: (qb: QueryBuilderLike) => void): QueryBuilderLike;
   whereNot(column: string, value: unknown): QueryBuilderLike;
   whereIn(column: string, values: unknown[]): QueryBuilderLike;
   whereNotIn(column: string, values: unknown[]): QueryBuilderLike;
@@ -29,11 +31,31 @@ interface QueryBuilderLike {
   whereNotBetween(column: string, range: [unknown, unknown]): QueryBuilderLike;
   whereILike(column: string, value: string): QueryBuilderLike;
   orWhereILike(column: string, value: string): QueryBuilderLike;
+  whereRaw(sql: string, bindings?: readonly unknown[]): QueryBuilderLike;
   orderBy(column: string, direction: 'asc' | 'desc'): QueryBuilderLike;
+  orderByRaw(sql: string, bindings?: readonly unknown[]): QueryBuilderLike;
+  distinct(...columns: string[]): QueryBuilderLike;
+  limit(count: number): QueryBuilderLike;
 }
 ```
 
 A Lucid `ModelQueryBuilder` or `DatabaseQueryBuilder` is a structural superset, so you can pass it straight in — no cast needed. The nested-callback `where`/`orWhere` overloads model Lucid's grouping closures, which is how AND/OR composition is rendered.
+
+The last five members carry the features that cannot be expressed as a plain column comparison, and they are the ones a hand-written stand-in usually forgets:
+
+| Member | Drives |
+| --- | --- |
+| `whereHas` | [relation-path filtering](/docs/filter/definitions/relations) — `posts.title` becomes a subquery, not a dotted column |
+| `whereRaw` / `orderByRaw` | [vector similarity](/docs/filter/search/vector-similarity) and full-text predicates, where the SQL is server-authored and every user value travels as a `?` binding |
+| `distinct` | the [`distinct` projection](#distinct-projections) below |
+| `limit` | `topK` truncation on a similarity search |
+
+<Callout type="warn" title="No member is optional">
+`implements QueryBuilderLike` is checked against all of them. A class that stops
+at `orderBy` fails to compile — TypeScript reports the missing members, but a
+*mistyped* one is reported against `where` (the first overload set it tries),
+which sends you looking in the wrong place. Copy the block above verbatim.
+</Callout>
 
 <Callout type="info">
 Because the binding is structural rather than a hard dependency, the adapter stays trivially unit-testable: feed it a recording mock that implements the same methods and assert the calls. See [Testing](/docs/filter/guides/testing).
@@ -123,7 +145,19 @@ const rows = await query.distinct('status').select('status')
 // → [{ status: 'active' }, { status: 'inactive' }]
 ```
 
-The [client builder](/docs/filter/guides/client) has a matching `.distinct(...)` that serializes the requested columns; read them off the parsed request and apply them with Lucid's own `distinct()`.
+You rarely need to write that by hand, though: `distinct` is part of the wire format. Both `parseFilterRequest` and `parseSpatieRequest` read `?distinct=status,baseId` (and the repeated `distinct[]=status&distinct[]=baseId` form) into `input.distinct`, and `applyFilter` applies it for you — alias-resolved and allow-listed exactly like a `where` field. The [client builder](/docs/filter/guides/client)'s `.distinct(...)` emits that parameter, so the round trip needs no code on your side:
+
+```ts
+// GET /users?filter[status]=active&distinct=baseId
+const input = parseFilterRequest(request.qs())   // → { filters: [...], distinct: ['baseId'] }
+const query = User.query()
+
+applyFilter(query, input, { allowed: ['status', 'baseId'] })  // applies the DISTINCT too
+
+const rows = await query.select('baseId')
+```
+
+The manual `query.distinct(...)` above is still the right tool when the projection is *your* decision rather than the client's.
 
 ### `distinct` takes root-table columns only
 

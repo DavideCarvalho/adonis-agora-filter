@@ -1,6 +1,6 @@
 import type { CursorParams } from './cursor.js';
 import type { ColumnFilter } from './operators.js';
-import { parseSort, toColumnFilters } from './parse_request.js';
+import { parseDistinct, parseSort, toColumnFilters } from './parse_request.js';
 import type { FilterInput } from './types.js';
 
 /**
@@ -39,6 +39,7 @@ function toInt(value: unknown): number | undefined {
  * | `filter[id]=1,2,3`              | `{ filter: { id: '1,2,3' } }`        | `in` column filter                         |
  * | `filter[age][gte]=18`          | `{ filter: { age: { gte: '18' } } }` | operator column filter                     |
  * | `sort=-createdAt,name`         | `{ sort: '-createdAt,name' }`        | sort items                                 |
+ * | `distinct=city,tier`           | `{ distinct: 'city,tier' }`          | `distinct: ['city', 'tier']`               |
  * | `include=posts,comments`       | `{ include: 'posts,comments' }`      | `include: ['posts', 'comments']`           |
  * | `fields[users]=id,name`        | `{ fields: { users: 'id,name' } }`   | `select: ['id', 'name']`                   |
  * | `page[number]=2&page[size]=10` | `{ page: { number, size } }`         | offset (`page`/`size`)                     |
@@ -62,6 +63,9 @@ export function parseSpatieRequest(qs: unknown): SpatieInput {
 
   const sort = parseSort(src.sort);
   if (sort.length > 0) out.sort = sort;
+
+  const distinct = parseDistinct(src.distinct);
+  if (distinct.length > 0) out.distinct = distinct;
 
   if (typeof src.search === 'string' && src.search.length > 0) out.search = src.search;
 

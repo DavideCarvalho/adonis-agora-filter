@@ -10,7 +10,7 @@ import { Cards, Card } from 'fumadocs-ui/components/card';
 
 **`@adonis-agora/filter`** turns messy `?filter[name]=Al&filter[age][gte]=18` query strings into safe, validated Lucid queries. You parse the request into a structured input, then apply it to any Lucid query builder under a **field allow-list** — the allow-list is the security boundary, so client input can never probe arbitrary columns. The library does the rest: operator dispatch, AND/OR composition, ILIKE search, sorting, and offset pagination resolution.
 
-The wire format is the [Spatie](https://spatie.be/docs/laravel-query-builder) / JSON:API convention (`filter[field][op]=value`, `sort=-createdAt`, `page`/`size`), so the companion **`@agora/filter-client`** builder produces exactly what the server parses — fully type-safe, framework-agnostic, with optional TanStack Table state sync.
+The wire format is the [Spatie](https://spatie.be/docs/laravel-query-builder) / JSON:API convention (`filter[field][op]=value`, `sort=-createdAt`, `page`/`size`), so the companion **`@adonis-agora/filter-client`** builder produces exactly what the server parses — fully type-safe, framework-agnostic, with optional TanStack Table state sync.
 
 ## The problem it solves
 
@@ -65,7 +65,7 @@ export default class UsersController {
 Build the query string from the front-end with the typed client — done:
 
 ```ts title="web/users-table.ts"
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const qs = filterQuery()
   .contains('name', 'Al')
@@ -74,7 +74,7 @@ const qs = filterQuery()
   .sort('createdAt', 'desc')
   .page(1, 25)
   .toQueryString()
-// → filter[name][contains]=Al&filter[age][gte]=18&filter[status]=active&sort=-createdAt&page=1&size=25
+// → filter%5Bname%5D[contains]=Al&filter%5Bage%5D[gte]=18&filter%5Bstatus%5D=active&sort=-createdAt&page=1&size=25
 
 await fetch(`/users?${qs}`)
 ```
@@ -115,7 +115,7 @@ A parsed `FilterInput` combines five concerns in one request — column filters 
   <Card title="Validation" href="/docs/filter/guides/validation" description="Structural validation, VineJS integration, and the security boundary." />
   <Card title="Controllers" href="/docs/filter/guides/controllers" description="Wiring parse → apply into AdonisJS controllers and routes." />
   <Card title="Lucid Integration" href="/docs/filter/guides/lucid" description="Applying filters to Lucid models and query builders, pagination, and the QueryBuilderLike contract." />
-  <Card title="Client Builder" href="/docs/filter/guides/client" description="@agora/filter-client — the typed query builder, reactivity, and TanStack Table sync." />
+  <Card title="Client Builder" href="/docs/filter/guides/client" description="@adonis-agora/filter-client — the typed query builder, reactivity, and TanStack Table sync." />
   <Card title="Testing" href="/docs/filter/guides/testing" description="Unit-testing filters with a recording mock query builder, end-to-end tests with Japa." />
   <Card title="Defining Filters" href="/docs/filter/definitions" description="defineFilter + applyFilterFromRequest — a reusable definition with relations, tenant scope, and defaults." />
   <Card title="Cursor Pagination" href="/docs/filter/pagination" description="Keyset pagination — stable, seek-based pages with opaque forward/backward cursors." />

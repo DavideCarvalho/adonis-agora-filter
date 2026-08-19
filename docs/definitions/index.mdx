@@ -9,7 +9,7 @@ import { Steps, Step } from 'fumadocs-ui/components/steps';
 
 `parseFilterRequest` + `applyFilter` are the two-function primitive — great when a policy lives in one controller. When the same policy is reused across endpoints (and grows relations, a tenant scope, and default filters), reach for the **declarative definition**: build a `FilterSpec` once with `defineFilter`, then apply it on every request with `applyFilterFromRequest`.
 
-This is the AdonisJS-idiomatic replacement for the NestJS `@Filterable` / `@Relations` / `@TenantScoped` decorator stack — the same feature set, expressed as a plain, framework-free options object instead of metadata reflection.
+A `FilterSpec` is a plain, framework-free options object — no decorators, no metadata reflection. That keeps the policy readable at a glance, testable without a request, and importable from anywhere: the same object drives the controller, the codegen that emits the typed client, and your unit tests.
 
 ---
 
@@ -18,6 +18,7 @@ This is the AdonisJS-idiomatic replacement for the NestJS `@Filterable` / `@Rela
 Build the spec **once** (module scope) and freeze it. It captures the whole policy: what is filterable/sortable, which relations are reachable, tenant scoping, and server-side defaults.
 
 ```ts title="app/filters/user_filter.ts"
+import type { HttpContext } from '@adonisjs/core/http'
 import { defineFilter } from '@adonis-agora/filter'
 
 export const userFilter = defineFilter({
@@ -32,7 +33,12 @@ export const userFilter = defineFilter({
   },
 
   // Server policy, never exposed to the client allow-list:
-  tenant: { column: 'tenantId', resolve: (ctx) => ctx.auth.user.tenantId },
+  tenant: {
+    column: 'tenantId',
+    // `ctx` is typed `unknown` — the spec is framework-free and never imports
+    // HttpContext — so narrow it to what you actually pass in.
+    resolve: (ctx) => (ctx as HttpContext).auth.user!.tenantId,
+  },
   defaultFilters: [{ field: 'deletedAt', operator: 'isNull' }],
   defaultSort: [{ field: 'createdAt', direction: 'desc' }],
 
@@ -134,7 +140,7 @@ export default class UsersController {
 }
 ```
 
-This single call is the idiomatic replacement for the NestJS `ApplyFilterInterceptor` + `@ApplyFilter()` param decorator.
+That single call replaces the whole parse-validate-apply sequence: it reads the request through the spec's configured source, resolves aliases, prunes anything outside the allow-list, applies the tenant scope and default filters, and returns the pagination the controller hands to `paginate`.
 
 <Callout type="warn" title="Tenant scope is un-tamperable">
 The tenant constraint and `defaultFilters` are applied as trusted server policy — they bypass the allow-list on purpose. A client that sends `?filter[tenantId]=999` cannot override the resolved tenant: `tenantId` isn't in `filterable`, so the client filter is dropped, while the server's `where('tenantId', 42)` still lands.

@@ -17,7 +17,7 @@ The free functions ([`applyFilter`](/docs/filter/getting-started), [`applyFilter
 
 ## Register the provider
 
-`node ace add @adonis-agora/filter` wires it for you. To do it by hand, add `./filter_provider` to the `providers` array in `adonisrc.ts`:
+`node ace add @adonis-agora/filter` wires it for you — it registers this provider and the [`make:filter-client` commands barrel](/docs/filter/codegen#make-filter-client--the-ace-command), and publishes no config file (a filter policy is a `defineFilter` call in your own code, not global configuration). To do it by hand, add `./filter_provider` to the `providers` array in `adonisrc.ts`:
 
 ```ts title="adonisrc.ts"
 {

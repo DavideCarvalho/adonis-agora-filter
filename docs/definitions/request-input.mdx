@@ -12,7 +12,9 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 ## `parseSpatieRequest` — the full Spatie/JSON:API shape
 
-A superset of `parseFilterRequest`: it understands the same `filter` / `sort` / `search` shapes **plus** JSON:API relation includes, sparse fieldsets, and cursor pagination. It returns a `SpatieInput` (a `FilterInput` extended with `select`, `include`, and cursor params) — ready to hand to `applyFilter` (offset) or `applyCursor` (keyset); the extra fields are ignored by whichever runner does not use them.
+A superset of `parseFilterRequest`: it understands the same `filter` / `sort` / `search` / `distinct` shapes **plus** JSON:API relation includes, sparse fieldsets, and cursor pagination. It returns a `SpatieInput` (a `FilterInput` extended with `select`, `include`, and cursor params) — ready to hand to `applyFilter` (offset) or `applyCursor` (keyset).
+
+`include` and `select` are **parsed but never applied**. No runner reads them, because which relations and columns a client may reach is a policy decision this library deliberately leaves to you. Treat them as a request you validate and then act on with Lucid's `preload` / `select` yourself.
 
 ```ts
 import { parseSpatieRequest } from '@adonis-agora/filter'
@@ -26,8 +28,9 @@ const input = parseSpatieRequest(request.qs())
 | `filter[id]=1,2,3` / `filter[id][]=1&filter[id][]=2` | `in` column filter |
 | `filter[age][gte]=18` | operator column filter |
 | `sort=-createdAt,name` | sort items |
-| `include=posts,comments` | `include: ['posts', 'comments']` |
-| `fields[users]=id,name` | `select: ['id', 'name']` (sparse fieldsets, flattened + de-duped) |
+| `distinct=city,tier` / `distinct[]=city&distinct[]=tier` | `distinct: ['city', 'tier']` |
+| `include=posts,comments` | `include: ['posts', 'comments']` (parsed only — you apply the `preload`) |
+| `fields[users]=id,name` | `select: ['id', 'name']` (sparse fieldsets, flattened + de-duped — parsed only) |
 | `page[number]=2&page[size]=10` | offset (`page`/`size`) |
 | `page[after]=<cursor>&page[size]=10` | cursor (`after`/`first`) |
 

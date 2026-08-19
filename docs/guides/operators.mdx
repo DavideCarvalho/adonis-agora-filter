@@ -154,15 +154,41 @@ parses to:
 Query-string values are always **strings** — `filter[age][gte]=18` parses `value: '18'`, not `18`. SQL comparison still works because the database coerces, but if you need real numbers/dates (e.g. for app-level logic), coerce them after `parseFilterRequest` or use a [VineJS validator](/docs/filter/guides/validation).
 </Callout>
 
-### Sort and pagination
+### Sort, pagination, search and distinct
 
 ```
-?sort=-createdAt,name        → [{ field: 'createdAt', direction: 'desc' }, { field: 'name', direction: 'asc' }]
-?page=2&size=50              → page: 2, size: 50
+?sort=-createdAt,name         → [{ field: 'createdAt', direction: 'desc' }, { field: 'name', direction: 'asc' }]
+?page=2&size=50               → page: 2, size: 50
 ?page[number]=2&page[size]=50 → page: 2, size: 50   (JSON:API nested form)
+?search=fleet                 → search: 'fleet'
+?distinct=city,tier           → distinct: ['city', 'tier']
+?distinct[]=city&distinct[]=tier → distinct: ['city', 'tier']  (repeated form)
 ```
 
-A leading `-` on a sort entry means descending.
+A leading `-` on a sort entry means descending. `distinct` names the columns of a
+[`DISTINCT` projection](/docs/filter/guides/lucid#distinct-projections) that
+`applyFilter` applies for you — allow-listed like any other field, and limited to
+root-table columns. Both `parseFilterRequest` and `parseSpatieRequest` read it.
+
+### The structured (`POST`) shape
+
+The same parser accepts the object the [client builder](/docs/filter/guides/client)'s
+`.build()` returns, so a `POST /search` endpoint can hand the body straight in:
+
+```ts
+parseFilterRequest({
+  filter: { where: [{ field: 'age', operator: 'gte', value: 18 }] },
+  sort: [{ field: 'createdAt', direction: 'desc' }],
+  paginate: { page: 2, size: 25 },
+})
+// → { filters: [{ field: 'age', operator: 'gte', value: 18 }],
+//     sort: [{ field: 'createdAt', direction: 'desc' }], page: 2, size: 25 }
+```
+
+An array of `{ field, operator }` records under `filter.where` (or at the top
+level, which is where OR/AND groups serialize to) is read as the condition list
+itself. A real column named `where` is unaffected — `filter[where]=lobby` is still
+an ordinary `equals` on `where`.
 
 ---
 
@@ -223,3 +249,14 @@ import { escapeLike } from '@adonis-agora/filter'
 
 escapeLike('50%_off') // '50\\%\\_off'
 ```
+
+`escapeLike(value, dialect?)` takes an optional second argument, because the two
+major SQL families spell LIKE escaping differently:
+
+| `dialect` | Escapes | How |
+|---|---|---|
+| `'standard'` (default) | `%`, `_`, `\` | backslash — `50\%\_off` |
+| `'mssql'` | `%`, `_`, `[` | bracket — `50[%][_]off` |
+
+The adapter always uses `'standard'`, which is what Postgres, MySQL and SQLite
+want. Pass `'mssql'` only when you are building a pattern for SQL Server by hand.

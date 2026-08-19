@@ -59,7 +59,7 @@ export interface FilterQueryResult {
 }
 
 /**
- * Client-side query builder for @agora/filter.
+ * Client-side query builder for @adonis-agora/filter.
  * Zero dependencies. Runs in browser + Node.
  */
 export class FilterQueryBuilder {

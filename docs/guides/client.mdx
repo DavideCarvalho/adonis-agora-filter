@@ -1,16 +1,16 @@
 ---
 title: Client Builder
 icon: Code
-description: "@agora/filter-client — a zero-dependency, framework-agnostic filter query builder, its typed variant, the reactive store contract, and TanStack Table sync."
+description: "@adonis-agora/filter-client — a zero-dependency, framework-agnostic filter query builder, its typed variant, the reactive store contract, and TanStack Table sync."
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-`@agora/filter-client` is the front-end half of the pair. It builds the exact wire format `@adonis-agora/filter` parses — `filter[field][op]=value`, `sort=-createdAt`, `page`/`size` — through a fluent API, with zero runtime dependencies (it runs in the browser and Node). It also doubles as a reactive store for React/Vue/Svelte and has an optional TanStack Table adapter.
+`@adonis-agora/filter-client` is the front-end half of the pair. It builds the exact wire format `@adonis-agora/filter` parses — `filter[field][op]=value`, `sort=-createdAt`, `page`/`size` — through a fluent API, with zero runtime dependencies (it runs in the browser and Node). It also doubles as a reactive store for React/Vue/Svelte and has an optional TanStack Table adapter.
 
 ```bash
-npm install @agora/filter-client
+npm install @adonis-agora/filter-client
 ```
 
 ---
@@ -20,7 +20,7 @@ npm install @agora/filter-client
 `filterQuery()` returns a fresh `FilterQueryBuilder`. Chain conditions, then terminate with `toQueryString()`, `build()`, or `toFlatObject()`.
 
 ```ts
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const qs = filterQuery()
   .equals('status', 'active')
@@ -29,7 +29,7 @@ const qs = filterQuery()
   .sort('createdAt', 'desc')
   .page(1, 25)
   .toQueryString()
-// → filter[status]=active&filter[name][contains]=fleet&filter[age][gte]=18&sort=-createdAt&page=1&size=25
+// → filter%5Bstatus%5D=active&filter%5Bname%5D[contains]=fleet&filter%5Bage%5D[gte]=18&sort=-createdAt&page=1&size=25
 
 await fetch(`/users?${qs}`)
 ```
@@ -124,11 +124,32 @@ Groups are emitted as a `ColumnFilter` with an empty `field` and an `OR`/`AND` a
 filterQuery()
   .sort('createdAt', 'desc')   // or .sortDesc('createdAt') / .sortAsc('name')
   .search('fleet')             // global term
-  .include('role', 'posts')    // relations to eager-load (deduped)
+  .include('role', 'posts')    // relations the caller should preload (deduped)
   .distinct('status')          // distinct projection (deduped)
   .page(0, 25)                 // 0-based page index, size (default 25)
   .set('extraKey', 'value')    // arbitrary extra key in the output
 ```
+
+<Callout type="warn" title="`include` is a request, not an action">
+`.include(...)` only carries relation names across the wire. Nothing in this
+library preloads them: `parseFilterRequest` drops `include` entirely, and
+`parseSpatieRequest` returns it as `input.include` but no runner consumes it.
+Eager-loading stays your call, because only you know which relations are safe to
+expose — read the list, check it against your own allow-list, and call Lucid's
+`preload` yourself:
+
+```ts
+const input = parseSpatieRequest(request.qs())
+const query = User.query()
+
+applyFilter(query, input, { allowed: ['name', 'status'] })
+for (const relation of input.include ?? []) {
+  if (PRELOADABLE.includes(relation)) query.preload(relation as any)
+}
+```
+
+The same goes for `select` (JSON:API sparse fieldsets) — it is parsed, never applied.
+</Callout>
 
 <Callout type="warn">
 `.page(page, size)` uses a **0-based** page index (TanStack convention). The server's `applyFilter` resolves a **1-based** page for Lucid's `paginate()`. If you send the client's page straight through, add `1` at the boundary — or use `toQueryString()`, where the page is passed verbatim and you normalize server-side.
@@ -147,10 +168,19 @@ filterQuery()
 ```ts
 const builder = filterQuery().gte('age', 18).in('status', ['A', 'B'])
 
-builder.toQueryString() // filter[age][gte]=18&filter[status][]=A&filter[status][]=B
+builder.toQueryString() // filter%5Bage%5D[gte]=18&filter%5Bstatus%5D[]=A&filter%5Bstatus%5D[]=B
 builder.build()         // { filter: { where: [ {age gte 18}, {status in [A,B]} ] } }
 builder.toFlatObject()  // { age: { gte: 18 }, status: ['A', 'B'] }
 ```
+
+<Callout type="info" title="Why the output has %5B in it">
+`toQueryString()` percent-encodes the **field-name** brackets (`filter%5Bage%5D`)
+while leaving the operator brackets literal. Both spellings decode to the same
+`filter[age][gte]` key, so the server sees no difference and you can paste the
+string straight into a URL. It matters in exactly one place: a test that asserts
+the string. Compare against the encoded form shown here, or decode first with
+`decodeURIComponent(qs)`.
+</Callout>
 
 ---
 
@@ -161,7 +191,7 @@ builder.toFlatObject()  // { age: { gte: 18 }, status: ['A', 'B'] }
 ### Field names only
 
 ```ts
-import { filterQueryTyped } from '@agora/filter-client'
+import { filterQueryTyped } from '@adonis-agora/filter-client'
 
 type UserFields = 'name' | 'age' | 'status'
 
@@ -235,7 +265,7 @@ builder.sortDynamic(column.id, sortModel.direction) // direction defaults to 'as
 They are **not** unvalidated: `whereDynamic` still checks the operator against the known operator set (an unknown operator throws) and validates the value shape against it, and it keeps the same **replace** semantics as `where` (one filter per field). `sortDynamic` is identical to `sort` at runtime — it exists purely so the typed builder can keep `sort` narrowed to the generated union while still offering an explicit untyped entry point.
 
 ```ts
-import { filterQueryTyped } from '@agora/filter-client'
+import { filterQueryTyped } from '@adonis-agora/filter-client'
 
 type UserFields = 'name' | 'age'
 
@@ -267,7 +297,7 @@ This is the exact contract React's `useSyncExternalStore` needs:
   <Tab value="React">
 ```ts
 import { useSyncExternalStore, useRef } from 'react'
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 function useFilterQuery() {
   const ref = useRef(filterQuery())
@@ -281,7 +311,7 @@ function useFilterQuery() {
   </Tab>
   <Tab value="Vanilla">
 ```ts
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const builder = filterQuery()
 const unsubscribe = builder.subscribe(() => {
@@ -303,11 +333,11 @@ unsubscribe()
 
 ## TanStack Table sync
 
-A types-only peer (`@tanstack/table-core`) powers an optional adapter at the `@agora/filter-client/tanstack` subpath. It maps vanilla TanStack Table state — column filters, sorting, pagination — onto a builder.
+A types-only peer (`@tanstack/table-core`) powers an optional adapter at the `@adonis-agora/filter-client/tanstack` subpath. It maps vanilla TanStack Table state — column filters, sorting, pagination — onto a builder.
 
 ```ts
-import { filterQuery } from '@agora/filter-client'
-import { applyTanstackTableState } from '@agora/filter-client/tanstack'
+import { filterQuery } from '@adonis-agora/filter-client'
+import { applyTanstackTableState } from '@adonis-agora/filter-client/tanstack'
 
 const body = applyTanstackTableState(filterQuery(), {
   columnFilters: table.getState().columnFilters, // { id, value }[]
@@ -325,7 +355,7 @@ TanStack column filters carry no operator (it lives in the column's `filterFn`),
 For a one-shot build straight from state:
 
 ```ts
-import { tanstackTableToFilterQuery } from '@agora/filter-client/tanstack'
+import { tanstackTableToFilterQuery } from '@adonis-agora/filter-client/tanstack'
 
 const body = tanstackTableToFilterQuery({
   columnFilters: table.getState().columnFilters,
@@ -337,6 +367,60 @@ const body = tanstackTableToFilterQuery({
 <Callout type="warn">
 TanStack's `pagination.pageIndex` is 0-based and is passed straight to the builder's `.page()`. Keep the [0-based vs 1-based](#sort-pagination-search-include-distinct) note in mind when the server reads it.
 </Callout>
+
+---
+
+## The rest of the public surface
+
+Beyond the builder, the package exports the pieces it is built from, so you can
+reach for one without adopting the whole chain.
+
+### Serializers
+
+`toQueryString()` is a composition of two exported functions. Use them directly
+when you already hold the data in one of their shapes:
+
+```ts
+import { flatObjectToQueryString, columnFiltersToQueryString } from '@adonis-agora/filter-client'
+
+// A flat { key: value | value[] | { op: value } } map → a query string.
+flatObjectToQueryString({ 'filter[age]': { gte: 18 }, sort: '-createdAt' })
+
+// A ColumnFilter[] (groups and all) → the indexed `where[i][...]` notation.
+columnFiltersToQueryString([{ field: 'age', operator: 'gte', value: 18 }])
+// → where[0][field]=age&where[0][operator]=gte&where[0][value]=18
+```
+
+`columnFiltersToQueryString` is what the builder falls back to once any OR/AND
+group is present, since groups are not representable as a flat object.
+
+### Operator validation
+
+The builder validates every call it receives; the same checks are exported for
+code that assembles filters before handing them over — a dynamic filter UI, say,
+where the operator comes from a dropdown:
+
+```ts
+import { validateOperatorValue, validateAddOperator, RANGE_OPERATORS } from '@adonis-agora/filter-client'
+
+validateOperatorValue('in', 'active')     // throws: `in` expects an array
+validateOperatorValue('isNull', 'x')      // throws: unary operators take no value
+validateAddOperator('equals')             // throws: add() is for range operators
+RANGE_OPERATORS.has('gte')                // true — the set `add()` accepts
+```
+
+Both throw a descriptive `Error` and return `void` on success, so they read as
+assertions.
+
+### Types
+
+| Export | What it is |
+|---|---|
+| `FilterQueryResult`, `SortItem`, `OffsetPagination` | the shapes `build()` returns |
+| `ColumnFilter`, `FilterOperator`, `FILTER_OPERATORS` | one condition, the operator union, and the runtime list of every operator |
+| `TypedFilterQuery`, `TypedFilterQueryBuilder` | the generated typed builder's interface — what [`make:filter-client`](/docs/filter/codegen) emits against |
+| `FieldTypeKind`, `FilterFieldTypes` | the field-kind declarations that drive per-field operator narrowing |
+| `ValueAt`, `Base`, `OperatorsFor`, `ValueForOp`, `StringFieldsOf`, `OrderableFieldsOf` | the type-level helpers behind that narrowing, for building your own typed wrappers |
 
 ---
 

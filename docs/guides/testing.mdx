@@ -14,6 +14,8 @@ Because the adapter targets the structural `QueryBuilderLike` interface rather t
 
 A `QueryBuilderLike` is a small interface — implement a stand-in that records every call, run `applyFilter` (or the low-level functions) against it, and assert the recorded calls. The library has no runtime Lucid dependency, so the mock is all you need.
 
+Every member of the interface is required, so `implements QueryBuilderLike` only compiles once the class covers all of them — including `whereHas`, `whereRaw`, `orderByRaw`, `distinct` and `limit`, which carry relation filtering, raw search/vector predicates and projections. The class below is complete; see [the contract](/docs/filter/guides/lucid#the-querybuilderlike-contract) for what each one drives.
+
 ```ts title="tests/unit/user_filter.spec.ts"
 import { test } from '@japa/runner'
 import { applyFilter, type QueryBuilderLike } from '@adonis-agora/filter'
@@ -50,7 +52,12 @@ class MockQuery implements QueryBuilderLike {
   whereNotBetween(c: string, r: [unknown, unknown]) { return this.record('whereNotBetween', c, r) }
   whereILike(c: string, v: string) { return this.record('whereILike', c, v) }
   orWhereILike(c: string, v: string) { return this.record('orWhereILike', c, v) }
+  whereHas(r: any, cb: (qb: QueryBuilderLike) => void) { return this.group(`whereHas:${r}`, cb) }
+  whereRaw(sql: string, b?: readonly unknown[]) { return this.record('whereRaw', sql, b) }
   orderBy(c: string, d: 'asc' | 'desc') { return this.record('orderBy', c, d) }
+  orderByRaw(sql: string, b?: readonly unknown[]) { return this.record('orderByRaw', sql, b) }
+  distinct(...c: string[]) { return this.record('distinct', ...c) }
+  limit(n: number) { return this.record('limit', n) }
 
   /** Every call across this builder and its nested groups. */
   flatten(): Call[] {
@@ -171,7 +178,7 @@ The mock proves the calls; an integration test proves the SQL is correct and ret
 
 ```ts title="tests/functional/users.spec.ts"
 import { test } from '@japa/runner'
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 import User from '#models/user'
 
 test.group('GET /users', (group) => {
@@ -201,7 +208,7 @@ test.group('GET /users', (group) => {
 ```
 
 <Callout type="info">
-Building the query string with `@agora/filter-client` in your tests doubles as a round-trip check: it verifies the client and server agree on the wire format end-to-end. See [Client Builder](/docs/filter/guides/client).
+Building the query string with `@adonis-agora/filter-client` in your tests doubles as a round-trip check: it verifies the client and server agree on the wire format end-to-end. See [Client Builder](/docs/filter/guides/client).
 </Callout>
 
 ---
@@ -211,7 +218,7 @@ Building the query string with `@agora/filter-client` in your tests doubles as a
 The client builder is pure and synchronous — assert its terminators directly:
 
 ```ts
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 test('builds the expected query string', ({ assert }) => {
   const qs = filterQuery()
@@ -219,7 +226,7 @@ test('builds the expected query string', ({ assert }) => {
     .gte('age', 18)
     .sortDesc('createdAt')
     .toQueryString()
-  assert.equal(qs, 'filter[name][contains]=Al&filter[age][gte]=18&sort=-createdAt')
+  assert.equal(qs, 'filter%5Bname%5D[contains]=Al&filter%5Bage%5D[gte]=18&sort=-createdAt')
 })
 
 test('where replaces, add accumulates', ({ assert }) => {

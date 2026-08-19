@@ -23,6 +23,11 @@
       "import": "./dist/src/testing.js",
       "default": "./dist/src/testing.js"
     },
+    "./configure": {
+      "types": "./dist/configure.d.ts",
+      "import": "./dist/configure.js",
+      "default": "./dist/configure.js"
+    },
     "./commands": {
       "types": "./dist/commands/main.d.ts",
       "import": "./dist/commands/main.js",
@@ -56,6 +61,7 @@
     }
   },
   "devDependencies": {
+    "@adonisjs/assembler": "8.4.0",
     "@adonisjs/core": "7.4.0",
     "@adonisjs/lucid": "22.4.2",
     "@types/luxon": "3.7.4",
@@ -67,7 +73,7 @@
     "vitest": "3.2.7"
   },
   "engines": {
-    "node": "v26.7.0"
+    "node": ">=20.6.0"
   },
   "keywords": ["adonisjs", "adonis", "filter", "lucid", "query", "spatie", "pagination", "agora"]
 }
