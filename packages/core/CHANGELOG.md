@@ -1,5 +1,135 @@
 # @adonis-agora/filter
 
+## 0.7.0
+
+### Minor Changes
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-filter/pull/23) [`2bd4e7b`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/2bd4e7baa50d3d0b4a25c834fc9edf612f7d854a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `parseSpatieRequest` now parses `distinct`, matching `parseFilterRequest`.
+
+  `parseSpatieRequest` is documented as the additive counterpart to
+  `parseFilterRequest` — same filter, sort and search shapes, plus cursor
+  pagination, includes and sparse fieldsets — so a controller can swap one for the
+  other. It did not read `distinct`, even though the runner applies it. Swapping
+  the parser turned a working `?distinct=city` into a full, un-deduped result set
+  with nothing to signal that the parameter had been dropped.
+
+  Both string (`distinct=city,tier`) and repeated (`distinct[]=city&distinct[]=tier`)
+  forms now parse identically in the two parsers.
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-filter/pull/23) [`2bd4e7b`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/2bd4e7baa50d3d0b4a25c834fc9edf612f7d854a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Add the `configure` hook, so `node ace add @adonis-agora/filter` actually wires the package.
+
+  The install instructions have always said to run `node ace add @adonis-agora/filter`,
+  but the package shipped no `configure` hook, so the command installed the
+  dependency and wired nothing. Two things silently did not happen: the provider
+  was never added to `adonisrc.ts` (no `applyFilterFromRequest` / `filterPaginate`
+  macros on `ModelQueryBuilder`), and the commands barrel was never registered, so
+  `make:filter-client` never appeared in `node ace list`.
+
+  `node ace add @adonis-agora/filter` — or `node ace configure @adonis-agora/filter`
+  on an already-installed package — now registers both:
+
+  ```ts
+  // adonisrc.ts
+  providers: [() => import('@adonis-agora/filter/filter_provider')],
+  commands: [() => import('@adonis-agora/filter/commands')],
+  ```
+
+  Nothing is published to `config/`: a filter policy is a per-model
+  `defineFilterSpec` call in your own code, not global configuration. Apps that
+  wired those two entries by hand need no change — the codemod is idempotent.
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-filter/pull/23) [`2bd4e7b`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/2bd4e7baa50d3d0b4a25c834fc9edf612f7d854a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `parseFilterRequest` now understands the client builder's structured shape, closing a silent unfiltered-response bug.
+
+  A POST search endpoint that hands `filterQuery()…build()` straight to
+  `parseFilterRequest` — the pairing the guides describe — did not work. The
+  builder returns
+
+  ```ts
+  { filter: { where: [{ field: 'status', operator: 'in', value: [...] }] },
+    sort: [{ field: 'createdAt', direction: 'desc' }],
+    paginate: { page: 2, size: 25 } }
+  ```
+
+  and the parser reshaped it as if `where` were a column: the entire condition list
+  became one `in` filter on a field named `where`, which the allow-list then
+  pruned, while `sort` and `paginate` were discarded for not being strings. The
+  endpoint answered with **every row, unsorted and unpaginated**, and raised
+  nothing — the failure looked like a working search with a broad result set.
+
+  The same shape reaches a plain GET too, because OR/AND groups serialize to a
+  top-level `where[0][field]=…`, so grouped queries were silently unfiltered as
+  well.
+
+  `parseFilterRequest` now recognises an already-structured condition list — under
+  `filter.where` or at the top level — and takes it as the filters, with nested
+  `AND`/`OR` groups intact. It also reads `sort` in the `[{ field, direction }]`
+  form and maps `paginate: { page, size }` onto `page`/`size`.
+
+  Existing requests are unaffected: `filter[field]=…`, `sort=-createdAt`,
+  `page`/`size` and `page[number]`/`page[size]` parse exactly as before, and a real
+  column named `where` (`filter[where]=lobby`, `filter[where][contains]=lob`,
+  `filter[where][]=a&filter[where][]=b`) is still treated as a column — only an
+  array of `{ field, operator }` records is read as a structured list, and a query
+  string cannot produce one by accident.
+
+  Note that `include` is still not consumed: eager-loading stays the caller's
+  `preload` call.
+
+### Patch Changes
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-filter/pull/23) [`2bd4e7b`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/2bd4e7baa50d3d0b4a25c834fc9edf612f7d854a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Report the real version from the exported `VERSION` constant.
+
+  `VERSION` is a hand-written literal next to a "keep in sync with package.json"
+  comment, and it had not been touched since the first release: the package shipped
+  `0.2.0` through `0.6.0` while `VERSION` still answered `'0.1.0'`. Anything gating
+  on it — a feature check, a bug report, a diagnostics banner — got a wrong answer.
+
+  It now reads `0.6.0`, and a test compares it against `package.json` so the next
+  release cannot silently drift again.
+
+- [#22](https://github.com/DavideCarvalho/adonis-agora-filter/pull/22) [`a33b2fe`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/a33b2febc48baa3dafcf6a703e4250bdebbde275) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fix a 500 when `distinct` is given a relation path.
+
+  `distinct` was gated on the `allowed` list and nothing else. A relation path like
+  `posts.title` is filterable by design — declaring `relations: { posts: { filterable: ['title'] } }`
+  whitelists it, and `make:filter-client` enumerates it into the generated field
+  union — so `?distinct=posts.title` cleared the check and was handed to Lucid
+  verbatim:
+
+  ```sql
+  select distinct "posts"."title" from "users"
+  --> ERROR: missing FROM-clause entry for table "posts"
+  ```
+
+  Lucid filters a relation with a correlated `EXISTS` subquery, so the relation is
+  never joined into the outer `FROM` and there is no alias to project a column
+  from. A `whereHas` on the same relation in the same request does not help.
+
+  **If your `distinct` works today, nothing changes.** Root-table columns —
+  including ones qualified with the root table's own name — behave exactly as
+  before, as do the alias resolution and the allow-list drop.
+
+  **If you pass a relation path** (`posts.title`) or a to-many aggregate path
+  (`posts.$count`), you now get a defined refusal instead of a database error: the
+  field is dropped from the `distinct` list (the remaining fields still apply), or
+  raises `InvalidColumnFilterError` — a 400, not a 500 — when your spec sets
+  `throwOnInvalid`. The message names the cause: it is the missing join, not the
+  allow-list, so adding the path to `filterable` will not (and should not) change
+  it. Filtering on that path keeps working; only projecting it is refused.
+
+- [#23](https://github.com/DavideCarvalho/adonis-agora-filter/pull/23) [`2bd4e7b`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/2bd4e7baa50d3d0b4a25c834fc9edf612f7d854a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Declare a supported Node range in `engines` again, instead of one exact version.
+
+  Both packages shipped `"engines": { "node": "v26.7.0" }` — an exact version, and
+  plainly the output of `node -v`, leading `v` and all. Every consumer on any other
+  Node got an unsatisfied-engine warning on install, and anyone running with
+  `engine-strict` (or a package manager that treats it as fatal) could not install
+  at all. The pinned version was also higher than anything the project itself uses:
+  CI runs Node 22 and `.nvmrc` names Node 20.
+
+  `engines` states the floor the package actually supports, which is `>=20.6.0` —
+  the same range it declared before, and the one the rest of the Agora packages
+  use. Nothing about the code changed; this only stops a false incompatibility
+  signal.
+
 ## 0.6.0
 
 ### Minor Changes
