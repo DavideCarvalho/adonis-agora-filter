@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseFilterRequest } from '../src/parse_request.js';
 import { parseSpatieRequest } from '../src/spatie_parser.js';
 
 /**
@@ -106,5 +107,35 @@ describe('parseSpatieRequest', () => {
   it('returns an empty object for non-object input', () => {
     expect(parseSpatieRequest(null)).toEqual({});
     expect(parseSpatieRequest('foo')).toEqual({});
+  });
+});
+
+/**
+ * `parseSpatieRequest` is the additive counterpart to `parseFilterRequest`, so a
+ * controller can swap one for the other to gain cursor pagination and includes.
+ * It silently did not carry `distinct`, which the runner applies on its own — so
+ * the swap turned a working `?distinct=city` into a full, un-deduped result set
+ * with nothing to indicate the parameter had been dropped.
+ */
+describe('parseSpatieRequest — distinct', () => {
+  it('parses the comma-separated form', () => {
+    expect(parseSpatieRequest({ distinct: 'city,tier' }).distinct).toEqual(['city', 'tier']);
+  });
+
+  it('parses the repeated/array form and de-duplicates', () => {
+    expect(parseSpatieRequest({ distinct: ['city', 'city', 'tier'] }).distinct).toEqual([
+      'city',
+      'tier',
+    ]);
+  });
+
+  it('agrees with parseFilterRequest on the same input', () => {
+    const qs = { distinct: ' city , tier ' };
+
+    expect(parseSpatieRequest(qs).distinct).toEqual(parseFilterRequest(qs).distinct);
+  });
+
+  it('omits the key when no distinct is requested', () => {
+    expect(parseSpatieRequest({ filter: { status: 'active' } }).distinct).toBeUndefined();
   });
 });
