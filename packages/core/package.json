@@ -23,6 +23,11 @@
       "import": "./dist/src/testing.js",
       "default": "./dist/src/testing.js"
     },
+    "./configure": {
+      "types": "./dist/configure.d.ts",
+      "import": "./dist/configure.js",
+      "default": "./dist/configure.js"
+    },
     "./commands": {
       "types": "./dist/commands/main.d.ts",
       "import": "./dist/commands/main.js",
