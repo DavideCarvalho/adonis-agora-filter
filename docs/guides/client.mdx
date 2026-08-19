@@ -29,7 +29,7 @@ const qs = filterQuery()
   .sort('createdAt', 'desc')
   .page(1, 25)
   .toQueryString()
-// → filter[status]=active&filter[name][contains]=fleet&filter[age][gte]=18&sort=-createdAt&page=1&size=25
+// → filter%5Bstatus%5D=active&filter%5Bname%5D[contains]=fleet&filter%5Bage%5D[gte]=18&sort=-createdAt&page=1&size=25
 
 await fetch(`/users?${qs}`)
 ```
@@ -147,10 +147,19 @@ filterQuery()
 ```ts
 const builder = filterQuery().gte('age', 18).in('status', ['A', 'B'])
 
-builder.toQueryString() // filter[age][gte]=18&filter[status][]=A&filter[status][]=B
+builder.toQueryString() // filter%5Bage%5D[gte]=18&filter%5Bstatus%5D[]=A&filter%5Bstatus%5D[]=B
 builder.build()         // { filter: { where: [ {age gte 18}, {status in [A,B]} ] } }
 builder.toFlatObject()  // { age: { gte: 18 }, status: ['A', 'B'] }
 ```
+
+<Callout type="info" title="Why the output has %5B in it">
+`toQueryString()` percent-encodes the **field-name** brackets (`filter%5Bage%5D`)
+while leaving the operator brackets literal. Both spellings decode to the same
+`filter[age][gte]` key, so the server sees no difference and you can paste the
+string straight into a URL. It matters in exactly one place: a test that asserts
+the string. Compare against the encoded form shown here, or decode first with
+`decodeURIComponent(qs)`.
+</Callout>
 
 ---
 

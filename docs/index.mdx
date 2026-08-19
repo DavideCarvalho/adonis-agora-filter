@@ -74,7 +74,7 @@ const qs = filterQuery()
   .sort('createdAt', 'desc')
   .page(1, 25)
   .toQueryString()
-// → filter[name][contains]=Al&filter[age][gte]=18&filter[status]=active&sort=-createdAt&page=1&size=25
+// → filter%5Bname%5D[contains]=Al&filter%5Bage%5D[gte]=18&filter%5Bstatus%5D=active&sort=-createdAt&page=1&size=25
 
 await fetch(`/users?${qs}`)
 ```

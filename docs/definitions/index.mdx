@@ -18,6 +18,7 @@ A `FilterSpec` is a plain, framework-free options object — no decorators, no m
 Build the spec **once** (module scope) and freeze it. It captures the whole policy: what is filterable/sortable, which relations are reachable, tenant scoping, and server-side defaults.
 
 ```ts title="app/filters/user_filter.ts"
+import type { HttpContext } from '@adonisjs/core/http'
 import { defineFilter } from '@adonis-agora/filter'
 
 export const userFilter = defineFilter({
@@ -32,7 +33,12 @@ export const userFilter = defineFilter({
   },
 
   // Server policy, never exposed to the client allow-list:
-  tenant: { column: 'tenantId', resolve: (ctx) => ctx.auth.user.tenantId },
+  tenant: {
+    column: 'tenantId',
+    // `ctx` is typed `unknown` — the spec is framework-free and never imports
+    // HttpContext — so narrow it to what you actually pass in.
+    resolve: (ctx) => (ctx as HttpContext).auth.user!.tenantId,
+  },
   defaultFilters: [{ field: 'deletedAt', operator: 'isNull' }],
   defaultSort: [{ field: 'createdAt', direction: 'desc' }],
 
