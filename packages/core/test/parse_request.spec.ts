@@ -65,3 +65,119 @@ describe('parseDistinct', () => {
     expect(parseDistinct(42)).toEqual([]);
   });
 });
+
+/**
+ * The client builder's `build()` output is documented as an interchangeable
+ * request shape — a POST search endpoint hands the body to `parseFilterRequest`.
+ * It was not: the whole `where` array collapsed into one bogus `in` filter on a
+ * field named `where`, which the allow-list then pruned, and `sort`/`paginate`
+ * were dropped on the floor. The endpoint answered with unfiltered, unsorted,
+ * unpaginated rows and reported no error.
+ */
+describe('parseFilterRequest — structured `build()` shape', () => {
+  const built = {
+    filter: {
+      where: [
+        { field: 'status', operator: 'in', value: ['active', 'pending'] },
+        { field: 'age', operator: 'gte', value: 18 },
+      ],
+    },
+    sort: [{ field: 'createdAt', direction: 'desc' }],
+    distinct: ['city'],
+    paginate: { page: 2, size: 25 },
+  };
+
+  it('takes `filter.where` as the column filters, not as one `in` on `where`', () => {
+    const out = parseFilterRequest(built);
+
+    expect(out.filters).toEqual([
+      { field: 'status', operator: 'in', value: ['active', 'pending'] },
+      { field: 'age', operator: 'gte', value: 18 },
+    ]);
+  });
+
+  it('keeps the sort items', () => {
+    expect(parseFilterRequest(built).sort).toEqual([{ field: 'createdAt', direction: 'desc' }]);
+  });
+
+  it('maps `paginate` onto page/size', () => {
+    const out = parseFilterRequest(built);
+
+    expect(out.page).toBe(2);
+    expect(out.size).toBe(25);
+  });
+
+  it('carries nested OR groups through untouched', () => {
+    const out = parseFilterRequest({
+      filter: {
+        where: [
+          { field: 'a', operator: 'equals', value: 1 },
+          {
+            field: '',
+            operator: 'equals',
+            OR: [
+              { field: 'b', operator: 'equals', value: 2 },
+              { field: 'c', operator: 'equals', value: 3 },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(out.filters?.[1]?.OR).toEqual([
+      { field: 'b', operator: 'equals', value: 2 },
+      { field: 'c', operator: 'equals', value: 3 },
+    ]);
+  });
+
+  it('reads a top-level `where` list, the form OR/AND groups serialize to', () => {
+    const out = parseFilterRequest({
+      where: [{ field: 'a', operator: 'equals', value: '1' }],
+    });
+
+    expect(out.filters).toEqual([{ field: 'a', operator: 'equals', value: '1' }]);
+  });
+
+  it('merges a structured list with sibling `filter[field]` entries', () => {
+    const out = parseFilterRequest({
+      filter: { where: [{ field: 'a', operator: 'equals', value: 1 }], status: 'active' },
+    });
+
+    expect(out.filters).toEqual([
+      { field: 'a', operator: 'equals', value: 1 },
+      { field: 'status', operator: 'equals', value: 'active' },
+    ]);
+  });
+
+  it('still treats a real column named `where` as a column', () => {
+    expect(parseFilterRequest({ filter: { where: 'lobby' } }).filters).toEqual([
+      { field: 'where', operator: 'equals', value: 'lobby' },
+    ]);
+    expect(parseFilterRequest({ filter: { where: { contains: 'lob' } } }).filters).toEqual([
+      { field: 'where', operator: 'contains', value: 'lob' },
+    ]);
+    expect(parseFilterRequest({ filter: { where: ['a', 'b'] } }).filters).toEqual([
+      { field: 'where', operator: 'in', value: ['a', 'b'] },
+    ]);
+  });
+
+  it('leaves the plain query-string shape exactly as before', () => {
+    const out = parseFilterRequest({
+      filter: { status: 'active', age: { gte: '18' } },
+      sort: '-createdAt,name',
+      page: '2',
+      size: '25',
+    });
+
+    expect(out.filters).toEqual([
+      { field: 'status', operator: 'equals', value: 'active' },
+      { field: 'age', operator: 'gte', value: '18' },
+    ]);
+    expect(out.sort).toEqual([
+      { field: 'createdAt', direction: 'desc' },
+      { field: 'name', direction: 'asc' },
+    ]);
+    expect(out.page).toBe(2);
+    expect(out.size).toBe(25);
+  });
+});
