@@ -1,16 +1,16 @@
 ---
 title: Client Builder
 icon: Code
-description: "@agora/filter-client — a zero-dependency, framework-agnostic filter query builder, its typed variant, the reactive store contract, and TanStack Table sync."
+description: "@adonis-agora/filter-client — a zero-dependency, framework-agnostic filter query builder, its typed variant, the reactive store contract, and TanStack Table sync."
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-`@agora/filter-client` is the front-end half of the pair. It builds the exact wire format `@adonis-agora/filter` parses — `filter[field][op]=value`, `sort=-createdAt`, `page`/`size` — through a fluent API, with zero runtime dependencies (it runs in the browser and Node). It also doubles as a reactive store for React/Vue/Svelte and has an optional TanStack Table adapter.
+`@adonis-agora/filter-client` is the front-end half of the pair. It builds the exact wire format `@adonis-agora/filter` parses — `filter[field][op]=value`, `sort=-createdAt`, `page`/`size` — through a fluent API, with zero runtime dependencies (it runs in the browser and Node). It also doubles as a reactive store for React/Vue/Svelte and has an optional TanStack Table adapter.
 
 ```bash
-npm install @agora/filter-client
+npm install @adonis-agora/filter-client
 ```
 
 ---
@@ -20,7 +20,7 @@ npm install @agora/filter-client
 `filterQuery()` returns a fresh `FilterQueryBuilder`. Chain conditions, then terminate with `toQueryString()`, `build()`, or `toFlatObject()`.
 
 ```ts
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const qs = filterQuery()
   .equals('status', 'active')
@@ -161,7 +161,7 @@ builder.toFlatObject()  // { age: { gte: 18 }, status: ['A', 'B'] }
 ### Field names only
 
 ```ts
-import { filterQueryTyped } from '@agora/filter-client'
+import { filterQueryTyped } from '@adonis-agora/filter-client'
 
 type UserFields = 'name' | 'age' | 'status'
 
@@ -235,7 +235,7 @@ builder.sortDynamic(column.id, sortModel.direction) // direction defaults to 'as
 They are **not** unvalidated: `whereDynamic` still checks the operator against the known operator set (an unknown operator throws) and validates the value shape against it, and it keeps the same **replace** semantics as `where` (one filter per field). `sortDynamic` is identical to `sort` at runtime — it exists purely so the typed builder can keep `sort` narrowed to the generated union while still offering an explicit untyped entry point.
 
 ```ts
-import { filterQueryTyped } from '@agora/filter-client'
+import { filterQueryTyped } from '@adonis-agora/filter-client'
 
 type UserFields = 'name' | 'age'
 
@@ -267,7 +267,7 @@ This is the exact contract React's `useSyncExternalStore` needs:
   <Tab value="React">
 ```ts
 import { useSyncExternalStore, useRef } from 'react'
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 function useFilterQuery() {
   const ref = useRef(filterQuery())
@@ -281,7 +281,7 @@ function useFilterQuery() {
   </Tab>
   <Tab value="Vanilla">
 ```ts
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const builder = filterQuery()
 const unsubscribe = builder.subscribe(() => {
@@ -303,11 +303,11 @@ unsubscribe()
 
 ## TanStack Table sync
 
-A types-only peer (`@tanstack/table-core`) powers an optional adapter at the `@agora/filter-client/tanstack` subpath. It maps vanilla TanStack Table state — column filters, sorting, pagination — onto a builder.
+A types-only peer (`@tanstack/table-core`) powers an optional adapter at the `@adonis-agora/filter-client/tanstack` subpath. It maps vanilla TanStack Table state — column filters, sorting, pagination — onto a builder.
 
 ```ts
-import { filterQuery } from '@agora/filter-client'
-import { applyTanstackTableState } from '@agora/filter-client/tanstack'
+import { filterQuery } from '@adonis-agora/filter-client'
+import { applyTanstackTableState } from '@adonis-agora/filter-client/tanstack'
 
 const body = applyTanstackTableState(filterQuery(), {
   columnFilters: table.getState().columnFilters, // { id, value }[]
@@ -325,7 +325,7 @@ TanStack column filters carry no operator (it lives in the column's `filterFn`),
 For a one-shot build straight from state:
 
 ```ts
-import { tanstackTableToFilterQuery } from '@agora/filter-client/tanstack'
+import { tanstackTableToFilterQuery } from '@adonis-agora/filter-client/tanstack'
 
 const body = tanstackTableToFilterQuery({
   columnFilters: table.getState().columnFilters,

@@ -171,7 +171,7 @@ The mock proves the calls; an integration test proves the SQL is correct and ret
 
 ```ts title="tests/functional/users.spec.ts"
 import { test } from '@japa/runner'
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 import User from '#models/user'
 
 test.group('GET /users', (group) => {
@@ -201,7 +201,7 @@ test.group('GET /users', (group) => {
 ```
 
 <Callout type="info">
-Building the query string with `@agora/filter-client` in your tests doubles as a round-trip check: it verifies the client and server agree on the wire format end-to-end. See [Client Builder](/docs/filter/guides/client).
+Building the query string with `@adonis-agora/filter-client` in your tests doubles as a round-trip check: it verifies the client and server agree on the wire format end-to-end. See [Client Builder](/docs/filter/guides/client).
 </Callout>
 
 ---
@@ -211,7 +211,7 @@ Building the query string with `@agora/filter-client` in your tests doubles as a
 The client builder is pure and synchronous — assert its terminators directly:
 
 ```ts
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 test('builds the expected query string', ({ assert }) => {
   const qs = filterQuery()

@@ -16,7 +16,7 @@ The library ships **three** search modes. They are distinct mechanisms — pick 
 | **Vector similarity** | a query **embedding** | nearest rows by embedding distance | `vectorSimilarity: {...}` |
 
 <Callout type="warn" title="Full-text search ≠ vector similarity">
-These two are easy to confuse because pgvector calls its extension "vector" and the underlying NestJS reference called tsvector search `applyVectorSearch`. They are **not** the same:
+These two are easy to confuse — pgvector names its extension "vector", and plenty of prose calls tsvector search "vector search" too. They are **not** the same:
 
 - **Full-text search** ([`applyFullTextSearch`](/docs/filter/search/full-text)) is **keyword search** — it matches a user's *text query string* against a Postgres tsvector document with `websearch_to_tsquery` / `@@`. Input: words.
 - **Vector similarity** ([`applyVectorSimilarity`](/docs/filter/search/vector-similarity)) is **embedding-similarity ordering** — it ranks rows by distance between a stored embedding column and a query *embedding vector* (pgvector `<=>`/`<->`/`<#>`). Input: a numeric vector.

@@ -223,7 +223,7 @@ export default class UsersController {
 ```
 
 ```ts title="web/users.ts — the client references the aliases like any field"
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const qs = filterQuery()
   .contains('fullName', 'silva')  // computed string expression

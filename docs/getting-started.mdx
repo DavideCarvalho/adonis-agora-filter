@@ -13,7 +13,7 @@ import { Steps, Step } from 'fumadocs-ui/components/steps';
 | Package | Where it runs | What it does |
 |---|---|---|
 | [`@adonis-agora/filter`](/docs/filter/guides/lucid) | server (AdonisJS) | parse a request → apply it to a Lucid query under a field allow-list → resolve pagination |
-| [`@agora/filter-client`](/docs/filter/guides/client) | browser / Node | a fluent, type-safe builder that emits exactly the query string the server parses |
+| [`@adonis-agora/filter-client`](/docs/filter/guides/client) | browser / Node | a fluent, type-safe builder that emits exactly the query string the server parses |
 
 The server package is **plain functions** — no config file, no decorators. You import `parseFilterRequest` and `applyFilter` and call them, and that alone wires most endpoints in a couple of minutes. An **optional** provider adds chainable Lucid macros (`.applyFilterFromRequest()` / `.filterPaginate()`) on top if you want them — see [Provider & Macros](/docs/filter/guides/provider) — but nothing here requires it.
 
@@ -50,7 +50,7 @@ The server package is **plain functions** — no config file, no decorators. You
 For the front-end, install the client builder in your web app or shared package:
 
 ```bash
-npm install @agora/filter-client
+npm install @adonis-agora/filter-client
 ```
 
 <Callout type="info">
@@ -171,7 +171,7 @@ will:
 The client builder produces exactly the wire format the server parses. The same conditions, type-checked at the call site:
 
 ```ts title="web/users.ts"
-import { filterQuery } from '@agora/filter-client'
+import { filterQuery } from '@adonis-agora/filter-client'
 
 const qs = filterQuery()
   .equals('status', 'active')
