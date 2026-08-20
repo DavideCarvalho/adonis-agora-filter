@@ -114,7 +114,7 @@ const { page, size } = applyFilter(query, input, {
 const users = await query.paginate(page, size)
 ```
 
-The `allowed` / `sortable` / `searchable` lists are the **security boundary**. A filter, sort, or search on any field not named there is silently dropped (or rejected — see [`throwOnInvalid`](/docs/filter/guides/validation#throwoninvalid)). See [Filter Classes](/docs/filter/guides/filter-classes) for the full `FilterConfig` reference.
+The `allowed` / `sortable` / `searchable` lists are the **security boundary**. A filter, sort, or search on any field not named there is silently dropped (or rejected — see [`throwOnInvalid`](/docs/filter/guides/validation#throwoninvalid--allow-list-rejection)). See [Filter Classes](/docs/filter/guides/filter-classes) for the full `FilterConfig` reference.
 
 <Callout type="info" title="Why pagination is returned, not applied">
 `applyFilter` resolves `size` (clamped to `[1, maxSize]`, default cap `100`) and `page` (min `1`), but leaves execution to you. That keeps the function pure with respect to the builder's terminal operations, so you can `query.paginate(page, size)`, run a plain `query.exec()`, or build a `DISTINCT` projection from the same filtered query.
