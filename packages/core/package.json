@@ -76,5 +76,15 @@
   "engines": {
     "node": ">=20.6.0"
   },
-  "keywords": ["adonisjs", "adonis", "filter", "lucid", "query", "spatie", "pagination", "agora", "tanstack-intent"]
+  "keywords": [
+    "adonisjs",
+    "adonis",
+    "filter",
+    "lucid",
+    "query",
+    "spatie",
+    "pagination",
+    "agora",
+    "tanstack-intent"
+  ]
 }
