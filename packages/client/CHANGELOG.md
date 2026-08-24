@@ -1,5 +1,11 @@
 # @adonis-agora/filter-client
 
+## 0.2.2
+
+### Patch Changes
+
+- [#26](https://github.com/DavideCarvalho/adonis-agora-filter/pull/26) [`9b07c15`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/9b07c159716c5032812bbf5c2360ff82df7be4c5) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Ship TanStack Intent AI-agent skills: five core skills under `packages/core/skills/` (filter-basics, filter-safety, filter-definitions, filter-querying, filter-codegen) and one under `packages/client/skills/` (filter-query-builder), plus repo-level `_artifacts/` (domain map, skill spec, skill tree) and a `check-skills` GitHub workflow validating them on PRs. Skills are included in each package's `files` so they land in `node_modules` on install.
+
 ## 0.2.1
 
 ### Patch Changes
