@@ -229,7 +229,7 @@ Nesting is capped at `MAX_FILTER_DEPTH` (10) to prevent stack-overflow from mali
 
 ## Security
 
-- **Allow-list first.** Operators only matter for fields that survive the allow-list in `applyFilter`. A condition on a disallowed field is dropped before it reaches the adapter. See [Filter Classes](/docs/filter/guides/filter-classes).
+- **Allow-list first.** Operators only matter for fields that survive the allow-list in `applyFilter`. A condition on a disallowed field is dropped before it reaches the adapter. See [Filter Classes](/docs/filter/guides/filter-config).
 - **Field charset.** `validateColumnFilter` rejects any field name not matching `^[a-zA-Z_][a-zA-Z0-9_.]*$`, which blocks SQL injection through field names (dots are allowed for relation paths).
 - **Parameterized values.** Every value goes through Lucid's parameter binding — no raw interpolation.
 - **LIKE escaping.** All string operators escape `%`, `_`, and `\` via `escapeLike()` before building the pattern, so user input can't inject wildcards.

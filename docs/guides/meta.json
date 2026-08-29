@@ -2,9 +2,10 @@
   "title": "Guides",
   "pages": [
     "controllers",
+    "filter-classes",
     "lucid",
     "operators",
-    "filter-classes",
+    "filter-config",
     "relations",
     "validation",
     "provider",

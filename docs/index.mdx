@@ -21,14 +21,14 @@ clause by clause:
 
 List endpoints accumulate filtering logic fast. Without a structure, every controller grows a tangle of `if (qs.name) { query.where(...) }` branches, ad-hoc operator handling, and string concatenation that invites injection bugs. `@adonis-agora/filter` replaces that with one declaration and one call:
 
-- **Declare once, apply everywhere.** A `defineFilter` spec is a plain object you keep next to your models; `applyFilterFromRequest()` reads the request through it and mutates your Lucid query in place. The two-function primitive underneath (`parseFilterRequest` + `applyFilter`) is still exported for one-off endpoints.
+- **A filter is a class.** One method per request key that needs SQL of its own, the builder on `this.$query`, a `setup()` scope the client cannot relax — and constructor injection through the container, so a filter can use a service. Plain columns stay declarative in the statics. (The object form, `defineFilter`, is the same pipeline and still exported.)
 - **The allow-list is the contract.** `filterable`, `sortable`, and `searchable` decide what is queryable. Anything else is dropped (or rejected with `throwOnInvalid`). No accidental exposure of internal columns.
 - **No hard Lucid import.** The adapter targets a structural `QueryBuilderLike` interface — any Lucid `ModelQueryBuilder` satisfies it, and the core stays unit-testable against a recording mock.
 - **Parameterized & escaped.** Values go through Lucid's parameter binding; LIKE patterns are escaped with `escapeLike()`. Field names are charset-validated before they ever reach SQL.
 
 ## Quickstart
 
-The whole loop — install, declare, apply, query — in four steps. For the full walkthrough see [Getting Started](/docs/filter/getting-started).
+The whole loop — install, write the filter, wire the model, query — in four steps. For the full walkthrough see [Getting Started](/docs/filter/getting-started).
 
 <Steps>
 <Step>
@@ -42,39 +42,53 @@ node ace add @adonis-agora/filter
 </Step>
 <Step>
 
-Declare what the endpoint lets clients query. This is the whole security boundary — a column that is not on the list cannot be filtered, sorted or searched, whatever the query string says:
+Write the filter — `node ace make:filter user`. The statics are the security boundary (a column that is not on a list cannot be filtered, sorted or searched, whatever the query string says); a method is for a key that needs SQL of its own:
 
 ```ts title="app/filters/user_filter.ts"
-import { defineFilter } from '@adonis-agora/filter'
+import { BaseModelFilter } from '@adonis-agora/filter'
+import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
 import User from '#models/user'
 
-export const userFilter = defineFilter({
-  model: User,
-  filterable: ['name', 'email', 'age', 'status'],
-  searchable: ['name', 'email'],
-  sortable: ['name', 'createdAt'],
-  defaultSort: [{ field: 'createdAt', direction: 'desc' }],
-})
+export default class UserFilter extends BaseModelFilter {
+  declare $query: ModelQueryBuilderContract<typeof User>
+
+  static model = User
+  static filterable = ['name', 'email', 'age', 'status']
+  static searchable = ['name', 'email']
+  static sortable = ['name', 'createdAt']
+  static defaultSort = [{ field: 'createdAt', direction: 'desc' as const }]
+
+  /** The scope no query string can relax. */
+  setup() {
+    this.$query.whereNull('deletedAt')
+  }
+
+  /** `?filter[fullName]=silva` — a key with no column behind it. */
+  fullName(value: string) {
+    this.$query.whereRaw("first_name || ' ' || last_name ilike ?", [`%${value}%`])
+  }
+}
 ```
 
 </Step>
 <Step>
 
-Apply it to a Lucid query in the controller. One call filters, searches, sorts, and resolves the pagination you hand to `paginate`:
+Point the model at it and the endpoint is one line — filters, search, sort and the page the request asked for:
+
+```ts title="app/models/user.ts"
+import { compose } from '@adonisjs/core/helpers'
+import { Filterable } from '@adonis-agora/filter'
+import UserFilter from '#filters/user_filter'
+
+export default class User extends compose(BaseModel, Filterable) {
+  static $filter = () => UserFilter
+}
+```
 
 ```ts title="app/controllers/users_controller.ts"
-import type { HttpContext } from '@adonisjs/core/http'
-import { applyFilterFromRequest } from '@adonis-agora/filter'
-import { userFilter } from '#filters/user_filter'
-import User from '#models/user'
-
 export default class UsersController {
   async index(ctx: HttpContext) {
-    const query = User.query()
-
-    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
-
-    return query.paginate(page, size)
+    return User.filterPaginate(ctx)
   }
 }
 ```
@@ -102,8 +116,8 @@ await fetch(`/users?${qs}`)
 </Step>
 </Steps>
 
-<Callout type="info" title="Pagination is returned, not applied">
-Applying a filter resolves and **returns** `{ page, size }` (clamped to your `maxSize`) rather than calling `paginate()` itself, so you stay in control of how the query executes — `query.paginate(page, size)`, a raw `.exec()`, or a `DISTINCT` projection. See [Lucid Integration](/docs/filter/guides/lucid).
+<Callout type="info" title="The builder is still yours">
+`filterPaginate` is the one-liner, not the only option: `const { query } = await User.filter(ctx)` hands the builder back — filtered, searched, sorted, nothing executed — so you can `preload`, `withCount` or project off it and then page it with `query.filterPaginate()`. See [Filter Classes](/docs/filter/guides/filter-classes) and [Lucid Integration](/docs/filter/guides/lucid).
 </Callout>
 
 ## More than a `WHERE` clause
@@ -130,7 +144,8 @@ A parsed `FilterInput` combines five concerns in one request — column filters 
 <Cards>
   <Card title="Getting Started" href="/docs/filter/getting-started" description="Install, parse a request, apply it to a Lucid query under an allow-list, and paginate." />
   <Card title="Operators" href="/docs/filter/guides/operators" description="All 22 operators, SQL-symbol aliases, the wire format, and how each maps to Lucid." />
-  <Card title="Filter Classes" href="/docs/filter/guides/filter-classes" description="The FilterConfig policy — allowed / sortable / searchable, defaults, and throwOnInvalid." />
+  <Card title="Filter Classes" href="/docs/filter/guides/filter-classes" description="A method per request key, this.$query, setup(), and constructor injection through the container." />
+  <Card title="Filter Config" href="/docs/filter/guides/filter-config" description="The FilterConfig policy — allowed / sortable / searchable, defaults, and throwOnInvalid." />
   <Card title="Relations" href="/docs/filter/guides/relations" description="Filtering across Lucid relationships with the structural adapter." />
   <Card title="Validation" href="/docs/filter/guides/validation" description="Structural validation, VineJS integration, and the security boundary." />
   <Card title="Controllers" href="/docs/filter/guides/controllers" description="Wiring parse → apply into AdonisJS controllers and routes." />

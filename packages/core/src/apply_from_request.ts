@@ -1,4 +1,11 @@
+import type { BaseModelFilter } from './base_model_filter.js';
 import type { CursorParams, ResolvedCursor } from './cursor.js';
+import {
+  type FilterClass,
+  isFilterClass,
+  methodForKey,
+  specFromFilterClass,
+} from './filter_class.js';
 import { type FilterSpec, specToFilterConfig } from './filter_spec.js';
 import { type QueryBuilderLike, applyColumnFilters } from './lucid_adapter.js';
 import type { ColumnFilter } from './operators.js';
@@ -110,7 +117,37 @@ export function applyFilterFromRequest(
   query: QueryBuilderLike,
   spec: FilterSpec,
   ctx: FilterRequestContext | undefined,
+  options?: ApplyFromRequestOptions,
+): ResolvedPagination;
+/**
+ * The class form: the filter is resolved through the IoC container (so an `@inject()`ed
+ * constructor works), its `setup()` runs before anything the request asked for, and every request
+ * key the class owns a method for is dispatched to that method instead of the declarative path.
+ * Resolution is async, so this overload returns a promise.
+ */
+export function applyFilterFromRequest(
+  query: QueryBuilderLike,
+  filter: FilterClass,
+  ctx: FilterRequestContext | undefined,
+  options?: ApplyFromRequestOptions,
+): Promise<ResolvedPagination>;
+export function applyFilterFromRequest(
+  query: QueryBuilderLike,
+  specOrClass: FilterSpec | FilterClass,
+  ctx: FilterRequestContext | undefined,
   options: ApplyFromRequestOptions = {},
+): ResolvedPagination | Promise<ResolvedPagination> {
+  if (isFilterClass(specOrClass)) {
+    return applyFilterClass(query, specOrClass, ctx, options);
+  }
+  return applySpec(query, specOrClass, ctx, options);
+}
+
+function applySpec(
+  query: QueryBuilderLike,
+  spec: FilterSpec,
+  ctx: FilterRequestContext | undefined,
+  options: ApplyFromRequestOptions,
 ): ResolvedPagination {
   const parsed = options.input ?? parseFilterRequest(rawQs(ctx));
   const withVector =
@@ -119,6 +156,87 @@ export function applyFilterFromRequest(
       : parsed;
   applyServerScope(query, spec, ctx);
   return applyFilter(query, withDefaultSort(withVector, spec), specToFilterConfig(spec));
+}
+
+/**
+ * Resolve a filter class through the request's IoC container when there is one — the same
+ * resolver a controller is constructed with, so `@inject()` on the filter behaves identically —
+ * and fall back to plain construction outside an AdonisJS request (a test, a script).
+ */
+async function resolveFilter(
+  cls: FilterClass,
+  ctx: FilterRequestContext | undefined,
+): Promise<BaseModelFilter> {
+  const resolver = ctx?.containerResolver as
+    | { make?: (c: unknown) => Promise<unknown> }
+    | undefined;
+  if (resolver && typeof resolver.make === 'function') {
+    return (await resolver.make(cls)) as BaseModelFilter;
+  }
+  return new cls();
+}
+
+/**
+ * Run a filter class against the query: bind the per-request state onto the instance, run
+ * `setup()`, apply everything the class declared statically through the ordinary spec path, then
+ * hand each key the class owns to its own method.
+ *
+ * The split matters: a key with a method is removed from the declarative input **before** the
+ * runner sees it, so `fullName` never becomes `where "fullName" = ?` on a column that may not
+ * exist — the method is the only thing that touches it.
+ */
+async function applyFilterClass(
+  query: QueryBuilderLike,
+  cls: FilterClass,
+  ctx: FilterRequestContext | undefined,
+  options: ApplyFromRequestOptions,
+): Promise<ResolvedPagination> {
+  const raw = rawQs(ctx);
+  const parsed = options.input ?? parseFilterRequest(raw);
+  const instance = await resolveFilter(cls, ctx);
+
+  const owned: { method: string; value: unknown; operator: string }[] = [];
+  const rest: ColumnFilter[] = [];
+  for (const condition of parsed.filters ?? []) {
+    const method = methodForKey(cls, condition.field);
+    if (method === undefined) {
+      rest.push(condition);
+      continue;
+    }
+    owned.push({ method, value: condition.value, operator: condition.operator });
+  }
+
+  // A bare top-level key (`?minAge=21`) reaches a method of the same name too — the shape
+  // `adonis-lucid-filter` dispatches on — as long as the wire format does not own the key.
+  for (const [key, value] of Object.entries(raw)) {
+    const method = methodForKey(cls, key);
+    if (method !== undefined && !owned.some((entry) => entry.method === method)) {
+      owned.push({ method, value, operator: 'equals' });
+    }
+  }
+
+  Object.assign(instance, {
+    $query: query,
+    $input: raw,
+    $parsed: parsed,
+    $ctx: ctx,
+  });
+
+  await instance.setup?.();
+
+  const pagination = applySpec(query, specFromFilterClass(cls), ctx, {
+    ...options,
+    input: { ...parsed, filters: rest },
+  });
+
+  for (const { method, value, operator } of owned) {
+    const fn = (instance as unknown as Record<string, unknown>)[method];
+    if (typeof fn === 'function') {
+      await (fn as (v: unknown, op: string) => unknown).call(instance, value, operator);
+    }
+  }
+
+  return pagination;
 }
 
 /** Parse cursor (keyset) params from a decoded query string (Spatie `page[...]` shapes). */

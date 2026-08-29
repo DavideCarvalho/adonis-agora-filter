@@ -1,0 +1,193 @@
+---
+title: Filter Config
+icon: ShieldCheck
+description: The FilterConfig policy object — allow-listing filterable, sortable and searchable columns, bounding page size, and choosing between dropping and rejecting a disallowed field.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+`@adonis-agora/filter` has no filter *classes* — there are no decorators and no base class to extend. The declarative surface is a single plain object, the **`FilterConfig`**, passed as the third argument to `applyFilter`. It is the policy for one endpoint: which columns are filterable, sortable, and searchable, and how pagination is bounded.
+
+```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const input = parseFilterRequest(request.qs())
+    const query = User.query()
+
+    const { page, size } = applyFilter(query, input, {
+      allowed: ['name', 'email', 'age', 'status'],
+      sortable: ['name', 'createdAt'],
+      searchable: ['name', 'email'],
+      defaultSize: 25,
+      maxSize: 100,
+      throwOnInvalid: false,
+    })
+
+    return query.paginate(page, size)
+  }
+}
+```
+
+<Callout type="info">
+Because the policy is just an object, you can compute it per request — widen the allow-list for an
+admin, narrow it for a public endpoint. See [Controllers](/docs/filter/guides/controllers) for those
+patterns, and [Defining Filters](/docs/filter/definitions) for the reusable `defineFilter` spec that
+wraps this same object.
+</Callout>
+
+## FilterConfig reference
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `allowed` | `AllowList` | **required** | Columns clients may filter on. |
+| `sortable` | `AllowList` | falls back to `allowed` | Columns clients may sort on. |
+| `searchable` | `string[]` | `[]` (search disabled) | Columns the free-text `search` term scans with ILIKE. |
+| `aliases` | `FieldAliases` | `{}` | Remap a public field name to a real target **before** allow-listing. See [Field Aliases](/docs/filter/definitions/aliases). |
+| `fieldTypes` | `Record<string, { kind?: FilterFieldKind }>` | `{}` | Declare a column's value kind so filter values are coerced to it. A value that cannot be coerced is treated exactly like a disallowed field — which turns a Postgres cast error (a 500) into a normal drop or a 400. |
+| `computed` | `ComputedFields` | `{}` | Virtual fields backed by SQL you write. A declared alias becomes filterable and sortable **without** appearing in `allowed` — the declaration *is* its allow-list. See [Computed Fields](/docs/filter/definitions/computed). |
+| `fullText` | `FullTextSearchConfig` | unset (ILIKE) | Route `search` through Postgres tsvector matching instead of the `searchable` ILIKE scan. See [Full-Text Search](/docs/filter/search/full-text). |
+| `vectorSimilarity` | `VectorSimilarityConfig` | unset | Rank rows by pgvector distance to the embedding in `input.vectorSimilarity`. Independent of text `search`. See [Vector Similarity](/docs/filter/search/vector-similarity). |
+| `table` | `string` | unset | The root table's SQL alias. Required for function-form computed fields and to-many aggregates, whose correlated subqueries must reference the outer row — and it is what lets `distinct` accept a `users.city`-style qualified column. |
+| `defaultSize` | `number` | `25` | Page size when the request omits `size`. |
+| `maxSize` | `number` | `100` | Hard upper bound — `size` is clamped to `[1, maxSize]`. |
+| `throwOnInvalid` | `boolean` | `false` | Throw `InvalidColumnFilterError` on a disallowed field instead of silently dropping it. |
+
+### `AllowList` — three forms
+
+`allowed` and `sortable` accept more than an array:
+
+```ts
+type AllowList = '*' | string[] | ((field: string) => boolean)
+```
+
+| Form | Meaning |
+|---|---|
+| `'*'` | allow any field (use with care — see the warning below) |
+| `string[]` | allow exactly these field names |
+| `(field) => boolean` | allow every field the predicate accepts |
+
+The predicate form expresses rules a flat list cannot — most usefully, whitelisting a whole family of relation paths under a depth cap:
+
+```ts
+applyFilter(query, input, {
+  // any base column, plus one hop into `posts` — but no deeper
+  allowed: (field) => !field.includes('.') || /^posts\.[a-z]+$/i.test(field),
+})
+```
+
+It receives the **already alias-resolved** target, never the client-facing alias key, so a predicate is written against your real column names.
+
+## The allow-list is the security boundary
+
+`allowed`, `sortable`, and `searchable` are not conveniences — they are the only thing standing between a client query string and your columns. Any field a client references that is not in the relevant list is pruned out of the query before it reaches Lucid.
+
+```ts
+const input = parseFilterRequest({
+  filter: { name: 'Al', passwordHash: { contains: 'x' } },
+})
+
+applyFilter(query, input, { allowed: ['name', 'email'] })
+// `name` is applied; `passwordHash` is dropped — never reaches SQL.
+```
+
+The pruning is **recursive**. For an AND/OR group, each leaf is checked independently; leaves on disallowed fields are removed, and a group left with no surviving children is dropped entirely.
+
+<Callout type="warn">
+`allowed: '*'` disables the filter allow-list. Only use it for trusted, internal endpoints — or pair it with a `searchable`/`sortable` list and rely on your model's column set being safe. Prefer an explicit array everywhere a client can reach.
+</Callout>
+
+## sortable defaults to allowed
+
+If you omit `sortable`, it falls back to `allowed` — the same columns are filterable and sortable. Set it explicitly to diverge:
+
+```ts
+applyFilter(query, input, {
+  allowed: ['name', 'email', 'age', 'status'],
+  sortable: ['name', 'createdAt'], // can sort by createdAt even though you can't filter it
+})
+```
+
+A sort on a non-sortable field is dropped (or rejected with `throwOnInvalid`), exactly like filters.
+
+## searchable enables free-text search
+
+The `search` term is only applied when `searchable` is non-empty. It runs a single OR-combined ILIKE group across those columns:
+
+```ts
+applyFilter(query, input, {
+  allowed: ['name', 'email'],
+  searchable: ['name', 'email'],
+})
+// ?search=fleet  →  WHERE (name ILIKE '%fleet%' OR email ILIKE '%fleet%')
+```
+
+The term is escaped with `escapeLike()` before the pattern is built. An empty or whitespace-only term is ignored. If `searchable` is omitted, `search` in the input is silently skipped.
+
+## Pagination bounds
+
+`applyFilter` resolves pagination from the input against the config and **returns** it:
+
+```ts
+const { page, size } = applyFilter(query, input, {
+  allowed: ['name'],
+  defaultSize: 25,
+  maxSize: 100,
+})
+```
+
+- `size` = `clamp(input.size ?? defaultSize ?? 25, 1, maxSize ?? 100)`
+- `page` = `max(1, input.page ?? 1)`
+
+So a request asking for `size=500` against `maxSize: 100` is clamped to `100`; a missing/zero/negative `page` resolves to `1`. You then drive Lucid's pagination yourself:
+
+```ts
+const result = await query.paginate(page, size)
+```
+
+<Callout type="info" title="Lucid pagination is 1-based">
+`applyFilter` resolves `page` with a floor of `1`, matching Lucid's `query.paginate(page, perPage)` which is 1-based. The [client builder](/docs/filter/guides/client)'s `.page(page, size)` is 0-based (TanStack convention) — normalize at the boundary if you pass client page numbers straight through.
+</Callout>
+
+## throwOnInvalid — strict mode
+
+By default, disallowed fields are dropped silently, so an over-broad query still returns results (just an unfiltered or partially-filtered set). Set `throwOnInvalid: true` to make the endpoint reject such requests instead:
+
+```ts
+try {
+  applyFilter(query, input, { allowed: ['name'], throwOnInvalid: true })
+} catch (err) {
+  // err instanceof InvalidColumnFilterError
+  // 'Field "secret" is not filterable.' / '... is not sortable.'
+}
+```
+
+This throws `InvalidColumnFilterError` (exported from `@adonis-agora/filter`) the moment a disallowed filter or sort field is encountered. See [Validation](/docs/filter/guides/validation) for turning that into a clean HTTP response.
+
+## When to graduate to a spec
+
+A `FilterConfig` written inline is the right amount of machinery for one endpoint. The moment the
+same policy appears in a second controller, move it into a
+[`defineFilter` spec](/docs/filter/definitions) instead of exporting the raw object:
+
+```ts title="app/filters/user_filter.ts"
+import { defineFilter } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export const userFilter = defineFilter({
+  model: User,
+  filterable: ['name', 'email', 'age', 'status'],
+  sortable: ['name', 'createdAt'],
+  searchable: ['name', 'email'],
+  maxSize: 100,
+})
+```
+
+The spec is the same policy plus the things a plain object cannot express: a relation whitelist with
+a depth cap, a tenant scope resolved per request, server-side default filters, and a declaration the
+[client codegen](/docs/filter/codegen) can read. `specToFilterConfig(spec)` projects it back down to
+the `FilterConfig` documented above, which is exactly what the runner consumes — the two are the
+same policy at two levels of convenience, not two competing APIs.

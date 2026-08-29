@@ -42,7 +42,7 @@ try {
 
 ## throwOnInvalid — allow-list rejection
 
-Structural validation guards the *shape*; the [allow-list](/docs/filter/guides/filter-classes) guards *which columns*. By default a disallowed field is dropped silently. Set `throwOnInvalid: true` to reject the request instead:
+Structural validation guards the *shape*; the [allow-list](/docs/filter/guides/filter-config) guards *which columns*. By default a disallowed field is dropped silently. Set `throwOnInvalid: true` to reject the request instead:
 
 ```ts title="app/filters/user_filter.ts"
 export const userFilter = defineFilter({

@@ -1,193 +1,280 @@
 ---
-title: Filter Config
-icon: ShieldCheck
-description: The FilterConfig policy object — allow-listing filterable, sortable and searchable columns, bounding page size, and choosing between dropping and rejecting a disallowed field.
+title: Filter Classes
+icon: Boxes
+description: The class-authoring form — a method per request key with the query builder on this.$query, a setup() scope the client cannot relax, constructor injection through the IoC container, and the pagination resolved for you.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-`@adonis-agora/filter` has no filter *classes* — there are no decorators and no base class to extend. The declarative surface is a single plain object, the **`FilterConfig`**, passed as the third argument to `applyFilter`. It is the policy for one endpoint: which columns are filterable, sortable, and searchable, and how pagination is bounded.
+A filter can be a class. It is the shape AdonisJS developers already know from
+`adonis-lucid-filter`: **one method per request key**, the query builder on `this.$query`, a
+`setup()` that runs on every call. What this library adds is everything around it — the operator
+wire format, search, sort, allow-listing, and the page the request asked for, already clamped.
 
-```ts title="app/controllers/users_controller.ts"
-import type { HttpContext } from '@adonisjs/core/http'
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+```ts title="app/filters/user_filter.ts"
+import { inject } from '@adonisjs/core'
+import { BaseModelFilter } from '@adonis-agora/filter'
+import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
+import TenantsService from '#services/tenants_service'
 import User from '#models/user'
 
-export default class UsersController {
-  async index({ request }: HttpContext) {
-    const input = parseFilterRequest(request.qs())
-    const query = User.query()
+@inject()
+export default class UserFilter extends BaseModelFilter {
+  declare $query: ModelQueryBuilderContract<typeof User>
 
-    const { page, size } = applyFilter(query, input, {
-      allowed: ['name', 'email', 'age', 'status'],
-      sortable: ['name', 'createdAt'],
-      searchable: ['name', 'email'],
-      defaultSize: 25,
-      maxSize: 100,
-      throwOnInvalid: false,
-    })
+  constructor(private tenants: TenantsService) {
+    super()
+  }
+
+  static model = User
+
+  // plain columns need no method — the runner applies the operators for them
+  static filterable = ['name', 'email', 'status']
+  static sortable = ['name', 'createdAt']
+  static searchable = ['name', 'email']
+  static defaultSort = [{ field: 'createdAt', direction: 'desc' as const }]
+  static defaultSize = 25
+  static maxSize = 100
+
+  // runs on every call, before anything the request asked for
+  setup() {
+    this.$query.where('tenantId', this.tenants.current(this.$ctx))
+  }
+
+  // `?filter[fullName]=silva` lands here instead of on a column of that name
+  fullName(value: string) {
+    this.$query.whereRaw("first_name || ' ' || last_name ilike ?", [`%${value}%`])
+  }
+}
+```
+
+`node ace make:filter user` scaffolds that file.
+
+## Writing the method is the decision to expose the key
+
+There is no allow-list entry for `fullName`. There does not need to be one: the key exists because
+a method exists, and the method is the only thing that can touch it. A key with no method and no
+place in `filterable` is dropped before it reaches SQL, exactly as it always was.
+
+That gives a class two halves that answer different questions:
+
+| Half | Answers | Where it lives |
+|---|---|---|
+| `static filterable` / `sortable` / `searchable` | which **columns** a client may reach with the standard operators | the statics, read by the same runner a `defineFilter` spec drives |
+| a method | what a key that is **not** a plain column means in SQL | your code, with the builder in hand |
+
+A class may be all methods and declare no `filterable` at all — then nothing reaches the database
+except through the methods you wrote, which is the tightest allow-list there is.
+
+<Callout type="info" title="Every key is matched the way you would expect">
+`filter[full_name]` finds `fullName()` (set `static camelCase = false` to turn that off), and with
+`static dropId = true` a `companyId` key finds `company()`. A key the wire format owns — `sort`,
+`search`, `page`, `size`, `distinct`, `include`, the cursor params — is never dispatched to a
+method, so a `sort()` method of your own can never be triggered by `?sort=`.
+</Callout>
+
+## The class is resolved through the container
+
+`@inject()` works because the filter is constructed by the IoC container, using the request's own
+resolver — the same one that constructs a controller. A filter can depend on a service, and in a
+test it can be constructed by hand.
+
+That resolution is asynchronous, which is the one thing to know about the call sites below: they
+`await`.
+
+## Applying it
+
+<Tabs items={['Model mixin', 'On a query you built', 'The free function']}>
+  <Tab value="Model mixin">
+
+Compose the model with `Filterable` and point it at its filter:
+
+```ts title="app/models/user.ts"
+import { compose } from '@adonisjs/core/helpers'
+import { BaseModel } from '@adonisjs/lucid/orm'
+import { Filterable } from '@adonis-agora/filter'
+import UserFilter from '#filters/user_filter'
+
+export default class User extends compose(BaseModel, Filterable) {
+  static $filter = () => UserFilter
+
+  // columns…
+}
+```
+
+```ts title="app/controllers/users_controller.ts"
+export default class UsersController {
+  // the whole list endpoint
+  async index(ctx: HttpContext) {
+    return User.filterPaginate(ctx)
+  }
+
+  // or keep the builder and go on composing
+  async index(ctx: HttpContext) {
+    const { query } = await User.filter(ctx)
+
+    query.whereNotNull('confirmedAt').preload('team')
+
+    return query.filterPaginate()
+  }
+}
+```
+
+  </Tab>
+  <Tab value="On a query you built">
+
+The macros take a class too, so a query you composed yourself can go through one:
+
+```ts title="app/controllers/users_controller.ts"
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query().whereNull('deletedAt').preload('team')
+
+    const { page, size } = await query.applyFilterFromRequest(UserFilter)
 
     return query.paginate(page, size)
   }
 }
 ```
 
-<Callout type="info">
-Because the policy is just an object, you can compute it per request — widen the allow-list for an
-admin, narrow it for a public endpoint. See [Controllers](/docs/filter/guides/controllers) for those
-patterns, and [Defining Filters](/docs/filter/definitions) for the reusable `defineFilter` spec that
-wraps this same object.
-</Callout>
+  </Tab>
+  <Tab value="The free function">
 
-## FilterConfig reference
+No macros, no mixin — the framework-free entry point accepts a class as readily as a spec:
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `allowed` | `AllowList` | **required** | Columns clients may filter on. |
-| `sortable` | `AllowList` | falls back to `allowed` | Columns clients may sort on. |
-| `searchable` | `string[]` | `[]` (search disabled) | Columns the free-text `search` term scans with ILIKE. |
-| `aliases` | `FieldAliases` | `{}` | Remap a public field name to a real target **before** allow-listing. See [Field Aliases](/docs/filter/definitions/aliases). |
-| `fieldTypes` | `Record<string, { kind?: FilterFieldKind }>` | `{}` | Declare a column's value kind so filter values are coerced to it. A value that cannot be coerced is treated exactly like a disallowed field — which turns a Postgres cast error (a 500) into a normal drop or a 400. |
-| `computed` | `ComputedFields` | `{}` | Virtual fields backed by SQL you write. A declared alias becomes filterable and sortable **without** appearing in `allowed` — the declaration *is* its allow-list. See [Computed Fields](/docs/filter/definitions/computed). |
-| `fullText` | `FullTextSearchConfig` | unset (ILIKE) | Route `search` through Postgres tsvector matching instead of the `searchable` ILIKE scan. See [Full-Text Search](/docs/filter/search/full-text). |
-| `vectorSimilarity` | `VectorSimilarityConfig` | unset | Rank rows by pgvector distance to the embedding in `input.vectorSimilarity`. Independent of text `search`. See [Vector Similarity](/docs/filter/search/vector-similarity). |
-| `table` | `string` | unset | The root table's SQL alias. Required for function-form computed fields and to-many aggregates, whose correlated subqueries must reference the outer row — and it is what lets `distinct` accept a `users.city`-style qualified column. |
-| `defaultSize` | `number` | `25` | Page size when the request omits `size`. |
-| `maxSize` | `number` | `100` | Hard upper bound — `size` is clamped to `[1, maxSize]`. |
-| `throwOnInvalid` | `boolean` | `false` | Throw `InvalidColumnFilterError` on a disallowed field instead of silently dropping it. |
+```ts title="app/controllers/users_controller.ts"
+import { applyFilterFromRequest } from '@adonis-agora/filter'
 
-### `AllowList` — three forms
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query()
 
-`allowed` and `sortable` accept more than an array:
+    const { page, size } = await applyFilterFromRequest(query, UserFilter, ctx)
 
-```ts
-type AllowList = '*' | string[] | ((field: string) => boolean)
-```
-
-| Form | Meaning |
-|---|---|
-| `'*'` | allow any field (use with care — see the warning below) |
-| `string[]` | allow exactly these field names |
-| `(field) => boolean` | allow every field the predicate accepts |
-
-The predicate form expresses rules a flat list cannot — most usefully, whitelisting a whole family of relation paths under a depth cap:
-
-```ts
-applyFilter(query, input, {
-  // any base column, plus one hop into `posts` — but no deeper
-  allowed: (field) => !field.includes('.') || /^posts\.[a-z]+$/i.test(field),
-})
-```
-
-It receives the **already alias-resolved** target, never the client-facing alias key, so a predicate is written against your real column names.
-
-## The allow-list is the security boundary
-
-`allowed`, `sortable`, and `searchable` are not conveniences — they are the only thing standing between a client query string and your columns. Any field a client references that is not in the relevant list is pruned out of the query before it reaches Lucid.
-
-```ts
-const input = parseFilterRequest({
-  filter: { name: 'Al', passwordHash: { contains: 'x' } },
-})
-
-applyFilter(query, input, { allowed: ['name', 'email'] })
-// `name` is applied; `passwordHash` is dropped — never reaches SQL.
-```
-
-The pruning is **recursive**. For an AND/OR group, each leaf is checked independently; leaves on disallowed fields are removed, and a group left with no surviving children is dropped entirely.
-
-<Callout type="warn">
-`allowed: '*'` disables the filter allow-list. Only use it for trusted, internal endpoints — or pair it with a `searchable`/`sortable` list and rely on your model's column set being safe. Prefer an explicit array everywhere a client can reach.
-</Callout>
-
-## sortable defaults to allowed
-
-If you omit `sortable`, it falls back to `allowed` — the same columns are filterable and sortable. Set it explicitly to diverge:
-
-```ts
-applyFilter(query, input, {
-  allowed: ['name', 'email', 'age', 'status'],
-  sortable: ['name', 'createdAt'], // can sort by createdAt even though you can't filter it
-})
-```
-
-A sort on a non-sortable field is dropped (or rejected with `throwOnInvalid`), exactly like filters.
-
-## searchable enables free-text search
-
-The `search` term is only applied when `searchable` is non-empty. It runs a single OR-combined ILIKE group across those columns:
-
-```ts
-applyFilter(query, input, {
-  allowed: ['name', 'email'],
-  searchable: ['name', 'email'],
-})
-// ?search=fleet  →  WHERE (name ILIKE '%fleet%' OR email ILIKE '%fleet%')
-```
-
-The term is escaped with `escapeLike()` before the pattern is built. An empty or whitespace-only term is ignored. If `searchable` is omitted, `search` in the input is silently skipped.
-
-## Pagination bounds
-
-`applyFilter` resolves pagination from the input against the config and **returns** it:
-
-```ts
-const { page, size } = applyFilter(query, input, {
-  allowed: ['name'],
-  defaultSize: 25,
-  maxSize: 100,
-})
-```
-
-- `size` = `clamp(input.size ?? defaultSize ?? 25, 1, maxSize ?? 100)`
-- `page` = `max(1, input.page ?? 1)`
-
-So a request asking for `size=500` against `maxSize: 100` is clamped to `100`; a missing/zero/negative `page` resolves to `1`. You then drive Lucid's pagination yourself:
-
-```ts
-const result = await query.paginate(page, size)
-```
-
-<Callout type="info" title="Lucid pagination is 1-based">
-`applyFilter` resolves `page` with a floor of `1`, matching Lucid's `query.paginate(page, perPage)` which is 1-based. The [client builder](/docs/filter/guides/client)'s `.page(page, size)` is 0-based (TanStack convention) — normalize at the boundary if you pass client page numbers straight through.
-</Callout>
-
-## throwOnInvalid — strict mode
-
-By default, disallowed fields are dropped silently, so an over-broad query still returns results (just an unfiltered or partially-filtered set). Set `throwOnInvalid: true` to make the endpoint reject such requests instead:
-
-```ts
-try {
-  applyFilter(query, input, { allowed: ['name'], throwOnInvalid: true })
-} catch (err) {
-  // err instanceof InvalidColumnFilterError
-  // 'Field "secret" is not filterable.' / '... is not sortable.'
+    return query.paginate(page, size)
+  }
 }
 ```
 
-This throws `InvalidColumnFilterError` (exported from `@adonis-agora/filter`) the moment a disallowed filter or sort field is encountered. See [Validation](/docs/filter/guides/validation) for turning that into a clean HTTP response.
+  </Tab>
+</Tabs>
 
-## When to graduate to a spec
+<Callout type="warn" title="A filtered builder comes back in an object, never as the promise's value">
+`User.filter(ctx)` resolves to `{ query, page, size }`, and the class form of
+`applyFilterFromRequest` resolves to `{ page, size }` — neither hands you the builder as the
+promise's own value. A Lucid query builder is *thenable*: a promise that resolved to one would
+run the query and give you rows instead. Destructuring keeps a builder a builder.
+</Callout>
 
-A `FilterConfig` written inline is the right amount of machinery for one endpoint. The moment the
-same policy appears in a second controller, move it into a
-[`defineFilter` spec](/docs/filter/definitions) instead of exporting the raw object:
+## `filterPaginate()` with no arguments
+
+A query that has already been through a filter remembers the page and size that call resolved, so
+the endpoint can compose freely in between and still page it the way the request asked:
+
+```ts title="app/controllers/users_controller.ts"
+const { query } = await User.filter(ctx)
+
+query.whereNotNull('confirmedAt').preload('team').withCount('posts')
+
+return query.filterPaginate() // ?page=2&size=500 → page 2, size clamped to maxSize
+```
+
+Calling it on a query nothing has filtered throws rather than guessing.
+
+## What `setup()` is for
+
+`setup()` runs before a single request filter is read, and it is the natural home for a constraint
+the client must not be able to relax:
 
 ```ts title="app/filters/user_filter.ts"
-import { defineFilter } from '@adonis-agora/filter'
-import User from '#models/user'
+setup() {
+  this.$query.whereNull('deletedAt')
+  this.$query.where('tenantId', this.tenants.current(this.$ctx))
 
-export const userFilter = defineFilter({
-  model: User,
-  filterable: ['name', 'email', 'age', 'status'],
-  sortable: ['name', 'createdAt'],
-  searchable: ['name', 'email'],
-  maxSize: 100,
+  if (!this.$ctx.auth.user!.isAdmin) {
+    this.$query.where('visibility', 'public')
+  }
+}
+```
+
+Because it runs on the builder, and the request's filters are AND-combined with whatever is
+already there, nothing a query string can say will widen it. The declarative equivalent for the
+tenant case is `static tenant = { column, resolve }`; pick whichever reads better — a scope with a
+condition in it usually wants the method.
+
+## What a method receives
+
+The value the client sent, and the operator it sent it under:
+
+```ts title="app/filters/user_filter.ts"
+minAge(value: string) {
+  this.$query.where('age', '>=', Number(value))
+}
+
+// `?filter[age][gte]=18` → age('18', 'gte')
+age(value: string, operator: string) {
+  if (operator === 'gte') this.$query.where('age', '>=', Number(value))
+  else this.$query.where('age', Number(value))
+}
+```
+
+A bare top-level key works too — `?minAge=21` reaches `minAge`, the shape `adonis-lucid-filter`
+dispatches on — so an existing front-end does not have to move to `filter[...]` to keep working.
+
+A method may be `async`; the call awaits it before the response is built.
+
+## Inside the class
+
+| Member | What it holds |
+|---|---|
+| `this.$query` | the query builder being filtered — the one the caller created |
+| `this.$ctx` | the request context (a real `HttpContext` in an app) |
+| `this.$input` | the raw decoded input the dispatch reads |
+| `this.$parsed` | the parsed input — filters, sort, search, pagination |
+| `this.input(key, fallback?)` | one raw value, or the whole object with no arguments |
+
+## Classes and specs are the same pipeline
+
+`defineFilter` has not gone anywhere: a class's statics are compiled into exactly the `FilterSpec`
+it would have produced, and both go through the same runner — same allow-list, same operators,
+same search and sort, same page clamping. Reach for a spec when the policy is data (generated,
+shared, or handed to the [client codegen](/docs/filter/codegen)); reach for a class when a key
+needs SQL of its own, or when the filter needs a service.
+
+```ts title="app/filters/user_filter.ts"
+import { specFromFilterClass } from '@adonis-agora/filter'
+
+specFromFilterClass(UserFilter) // the FilterSpec the class compiles to
+```
+
+## Testing one
+
+The class is a plain class: construct it, hand it a recording builder, assert the calls.
+
+```ts title="tests/unit/user_filter.spec.ts"
+import { test } from '@japa/runner'
+import { applyFilterFromRequest } from '@adonis-agora/filter'
+import { makeMockQueryBuilder } from '@adonis-agora/filter/testing'
+import UserFilter from '#filters/user_filter'
+
+test('fullName searches both name columns', async ({ assert }) => {
+  const qb = makeMockQueryBuilder()
+  const ctx = { request: { qs: () => ({ filter: { fullName: 'silva' } }) } }
+
+  await applyFilterFromRequest(qb, UserFilter, ctx)
+
+  assert.deepEqual(qb.find('whereRaw')?.args[1], ['%silva%'])
 })
 ```
 
-The spec is the same policy plus the things a plain object cannot express: a relation whitelist with
-a depth cap, a tenant scope resolved per request, server-side default filters, and a declaration the
-[client codegen](/docs/filter/codegen) can read. `specToFilterConfig(spec)` projects it back down to
-the `FilterConfig` documented above, which is exactly what the runner consumes — the two are the
-same policy at two levels of convenience, not two competing APIs.
+Pass a `containerResolver` on the fake ctx to control how the class is constructed:
+
+```ts title="tests/unit/user_filter.spec.ts"
+const ctx = {
+  request: { qs: () => ({}) },
+  containerResolver: { make: async () => new UserFilter(fakeTenants) },
+}
+```
+
+See [Testing](/docs/filter/guides/testing) for the rest.

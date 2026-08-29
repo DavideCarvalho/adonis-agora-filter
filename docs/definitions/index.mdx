@@ -11,6 +11,13 @@ import { Steps, Step } from 'fumadocs-ui/components/steps';
 
 A `FilterSpec` is a plain, framework-free options object — no decorators, no metadata reflection. That keeps the policy readable at a glance, testable without a request, and importable from anywhere: the same object drives the controller, the codegen that emits the typed client, and your unit tests.
 
+<Callout type="info" title="Or write it as a class">
+Everything on this page is also available as a [filter class](/docs/filter/guides/filter-classes) —
+the same options as statics, plus a method per request key that needs SQL of its own and a
+`setup()` scope, with the class resolved through the IoC container so it can use your services. A
+class compiles to exactly the `FilterSpec` described here, so the two forms share one runner.
+</Callout>
+
 ## `defineFilter` — the declaration
 
 Build the spec **once** (module scope) and freeze it. It captures the whole policy: what is filterable/sortable, which relations are reachable, tenant scoping, and server-side defaults.

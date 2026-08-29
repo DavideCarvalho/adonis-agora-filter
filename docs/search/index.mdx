@@ -31,7 +31,7 @@ The request's free-text `search` term routes to **one** text path, decided by th
 - Policy declares `fullText` → the term goes through **tsvector full-text search**.
 - Otherwise, if `searchable` is set → the term goes through the **portable ILIKE scan** (OR-combined across the columns).
 
-The ILIKE default is covered under [Filter Classes](/docs/filter/guides/filter-classes) and [Getting Started](/docs/filter/getting-started); the two advanced modes have their own pages:
+The ILIKE default is covered under [Filter Classes](/docs/filter/guides/filter-config) and [Getting Started](/docs/filter/getting-started); the two advanced modes have their own pages:
 
 <Cards>
   <Card title="Full-Text Search" href="/docs/filter/search/full-text" description="Postgres tsvector keyword search — websearch_to_tsquery, @@, and optional ts_rank relevance ordering." />

@@ -12,19 +12,15 @@ this guide is a variation on those three.
 
 ## The shape of a list endpoint
 
+With a [filter class](/docs/filter/guides/filter-classes) on the model, the endpoint is one line:
+
 ```ts title="app/controllers/users_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { applyFilterFromRequest } from '@adonis-agora/filter'
-import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
 export default class UsersController {
   async index(ctx: HttpContext) {
-    const query = User.query()
-
-    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
-
-    return query.paginate(page, size)
+    return User.filterPaginate(ctx)
   }
 }
 ```
@@ -36,23 +32,38 @@ const UsersController = () => import('#controllers/users_controller')
 router.get('/users', [UsersController, 'index'])
 ```
 
-With the [provider](/docs/filter/guides/provider) registered, the same endpoint collapses into one
-chained call — `filterPaginate` applies the spec and runs the paginator, reading the ambient
-`HttpContext` for you:
+Most endpoints need the builder between filtering and paging — to preload, to force a scope, to
+project something other than rows. Take it:
 
 ```ts title="app/controllers/users_controller.ts"
-async index() {
-  return User.query().filterPaginate(userFilter)
+async index(ctx: HttpContext) {
+  const { query } = await User.filter(ctx)
+
+  query.preload('team').withCount('posts')
+
+  return query.filterPaginate()
 }
 ```
 
-Both forms do exactly the same work. Reach for the explicit one when the controller needs the
-builder between the two steps — which is most of the sections below.
+And when the filter is a `defineFilter` spec rather than a class, the free function is the same
+three lines it always was:
+
+```ts title="app/controllers/users_controller.ts"
+async index(ctx: HttpContext) {
+  const query = User.query()
+
+  const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+
+  return query.paginate(page, size)
+}
+```
+
+All three do the same work — the sections below use whichever reads clearest.
 
 ## Constraints the client cannot relax
 
-A scope you enforce goes **on the builder**, and its column stays **out** of the spec's
-`filterable`. Client filters are AND-combined with whatever is already there, so the two together
+A scope you enforce goes **on the builder**, and its column stays **out** of `filterable`. With a
+class that is what `setup()` is for; on a query you built yourself it is an ordinary `where`. Client filters are AND-combined with whatever is already there, so the two together
 give you a condition no query string can widen:
 
 ```ts title="app/controllers/users_controller.ts"
@@ -80,8 +91,19 @@ it in each controller.
 
 ## Per-request policies
 
-A spec is a plain object, so nothing stops a controller from choosing between two of them — or from
-falling back to an inline `FilterConfig` for the one endpoint whose policy depends on who is asking:
+Which filter runs is the controller's decision, so an endpoint can pick one per request — an admin
+reading more columns than everyone else is a filter class of its own, not a branch inside one:
+
+```ts title="app/controllers/users_controller.ts"
+async index(ctx: HttpContext) {
+  const filter = ctx.auth.user!.isAdmin ? AdminUserFilter : UserFilter
+
+  return User.filterPaginate(ctx, filter)
+}
+```
+
+The same choice with a spec, or with an inline `FilterConfig` for the one endpoint whose policy
+depends on who is asking:
 
 ```ts title="app/controllers/users_controller.ts"
 import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
