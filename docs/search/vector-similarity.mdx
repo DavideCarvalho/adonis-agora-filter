@@ -12,8 +12,6 @@ import { Callout } from 'fumadocs-ui/components/callout';
 Vector similarity ranks by **embedding distance**; it does not match keywords. If you want to match a user's *text query*, use [Full-Text Search](/docs/filter/search/full-text) instead. The two are additive — you can filter by keywords and rank by embedding in the same query.
 </Callout>
 
----
-
 ## Config — declare the embedding column
 
 Add `vectorSimilarity` to a `defineFilter` spec (or a raw `FilterConfig`). It is **additive and opt-in**: a spec that declares it behaves exactly as before *until* a request also carries a query embedding.
@@ -41,32 +39,37 @@ export const docFilter = defineFilter({
 | `threshold` | Keep only rows whose distance is strictly below this value (`WHERE embedding <=> ? < threshold`). |
 | `topK` | Truncate to the K nearest rows (`LIMIT`). |
 
----
-
 ## Supplying the query embedding
 
 The query embedding is **not** shipped through the query string (a large float array doesn't belong in a URL). The idiomatic path: the controller computes it from an embedding service and passes it to `applyFilterFromRequest`:
 
 ```ts title="app/controllers/docs_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { inject } from '@adonisjs/core'
 import { applyFilterFromRequest } from '@adonis-agora/filter'
 import { docFilter } from '#filters/doc_filter'
+import EmbeddingService from '#services/embedding_service'
 import Doc from '#models/doc'
 
-async search(ctx: HttpContext) {
-  const { q } = ctx.request.qs()
-  const embedding = await embeddingService.embed(q) // number[]
+@inject()
+export default class DocsController {
+  constructor(private embeddings: EmbeddingService) {}
 
-  const query = Doc.query()
-  const { page, size } = applyFilterFromRequest(query, docFilter, ctx, {
-    vectorSimilarity: embedding, // merged into the input
-  })
-  return query.paginate(page, size)
+  async search(ctx: HttpContext) {
+    const { q } = ctx.request.qs()
+    const embedding = await this.embeddings.embed(q) // number[]
+
+    const query = Doc.query()
+    const { page, size } = applyFilterFromRequest(query, docFilter, ctx, {
+      vectorSimilarity: embedding, // merged into the input
+    })
+
+    return query.paginate(page, size)
+  }
 }
 ```
 
 Similarity ranking is applied **before** the user sort, so nearest-first distance is the primary ordering and any allowed `sort` acts as a tiebreaker. It runs only when the policy declares a `vectorSimilarity` column **and** the request carries a non-empty embedding — otherwise the query is unchanged.
-
----
 
 ## The generated SQL
 
@@ -80,8 +83,6 @@ ORDER BY "embedding" <=> ?::vector asc        -- binding:  '[0.1,0.2,0.3]'
 ## Injection safety
 
 The query embedding always travels as a positional binding (cast `?::vector`); it is never interpolated. The column name is the only spliced fragment and is validated against a strict identifier charset. A non-finite component (`NaN`/`Infinity`) throws rather than emitting bad SQL, and an empty vector is a no-op.
-
----
 
 ## Direct use
 

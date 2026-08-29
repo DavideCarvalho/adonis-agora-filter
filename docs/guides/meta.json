@@ -1,12 +1,12 @@
 {
   "title": "Guides",
   "pages": [
+    "controllers",
+    "lucid",
     "operators",
     "filter-classes",
     "relations",
     "validation",
-    "controllers",
-    "lucid",
     "provider",
     "client",
     "testing"

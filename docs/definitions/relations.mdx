@@ -12,8 +12,6 @@ A `defineFilter` spec can whitelist **relations**, letting clients filter and so
 This is the declarative counterpart to the manual `preload` / `whereHas` composition in the [Relations guide](/docs/filter/guides/relations). Here the relation whitelist lives in the spec, and the adapter builds the subquery for you.
 </Callout>
 
----
-
 ## Whitelisting relations
 
 Declare each relation by its name on the owning model. Column names are **bare** (unprefixed); the request field is the dotted path `relation.column`.
@@ -36,8 +34,6 @@ export const userFilter = defineFilter({
 ```
 
 A `RelationSpec`'s `filterable` defaults to `'*'` (any column of the related model) and its `sortable` defaults to its `filterable`.
-
----
 
 ## Dotted paths become `whereHas`
 
@@ -64,8 +60,6 @@ The full operator set works inside the subquery (`posts.title` with `contains` �
 Only whitelisted paths are ever translated — a disallowed relation or column is pruned by the allow-list before it reaches the adapter, so no dotted reference for an un-whitelisted relation can leak into the query.
 </Callout>
 
----
-
 ## The depth cap
 
 `maxDepth` bounds how many relation hops a path may cross (a base column is depth 0, `posts.title` is depth 1, `posts.comments.body` is depth 2). It **defaults to the deepest relation nesting you declared**, so you rarely set it — but an explicit smaller value caps paths even when a deeper relation is declared:
@@ -81,12 +75,10 @@ spec.isFilterable('posts.title')         // true  (depth 1)
 spec.isFilterable('posts.comments.body') // false (depth 2 > maxDepth 1)
 ```
 
----
-
 ## Sorting by a relation column
 
 Sortable relation columns work the same way. A whitelisted `posts.createdAt` in a `sort` param is allow-listed against the relation's `sortable` list and forwarded to the sort stage.
 
 <Callout type="warn">
-Relation-path **sorting** produces an `orderBy` on the dotted field; ordering across a to-many relation may require the relation to be joined/aggregated for the column to resolve. Relation **filtering** (`whereHas`) needs no join. Prefer relation filters for correctness, and sort by aggregate aliases (e.g. `withCount`) where you need relation-derived ordering — see the [Relations guide](/docs/filter/guides/relations#counting-and-ordering-by-a-relation).
+Relation-path **sorting** produces an `orderBy` on the dotted field; ordering across a to-many relation may require the relation to be joined/aggregated for the column to resolve. Relation **filtering** (`whereHas`) needs no join. Prefer relation filters for correctness, and sort by aggregate aliases (e.g. `withCount`) where you need relation-derived ordering — see the [Relations guide](/docs/filter/guides/relations#sorting-by-a-relation-aggregate).
 </Callout>

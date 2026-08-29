@@ -11,8 +11,6 @@ import { Steps, Step } from 'fumadocs-ui/components/steps';
 
 A `FilterSpec` is a plain, framework-free options object — no decorators, no metadata reflection. That keeps the policy readable at a glance, testable without a request, and importable from anywhere: the same object drives the controller, the codegen that emits the typed client, and your unit tests.
 
----
-
 ## `defineFilter` — the declaration
 
 Build the spec **once** (module scope) and freeze it. It captures the whole policy: what is filterable/sortable, which relations are reachable, tenant scoping, and server-side defaults.
@@ -119,8 +117,6 @@ The map desugars at the boundary: its keys become the allow-list, its values bec
 The map form is only for the **base** `filterable` list. Relation columns (`relations.posts.filterable`) stay the array/`'*'` form.
 </Callout>
 
----
-
 ## `applyFilterFromRequest` — the one call
 
 In the controller, apply the spec to a Lucid query straight from the `HttpContext`. It sources the input from `ctx.request.qs()`, injects the server scope (tenant + default filters) *before* the allow-listed request filters, applies the default sort when the request has none, and returns the resolved offset pagination.
@@ -147,8 +143,6 @@ The tenant constraint and `defaultFilters` are applied as trusted server policy 
 </Callout>
 
 The tenant scope is **opt-in per request**: when `resolve(ctx)` returns `null`/`undefined` (no tenant in context), scoping is simply skipped.
-
----
 
 ## Under the hood
 

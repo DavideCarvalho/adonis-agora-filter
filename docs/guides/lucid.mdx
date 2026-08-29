@@ -1,18 +1,228 @@
 ---
 title: Lucid Integration
 icon: Database
-description: Applying filters to Lucid models and query builders — the QueryBuilderLike contract, the low-level apply functions, pagination, and DISTINCT projections.
+description: How a filter reaches SQL — the builder stays yours, pagination is resolved rather than run, distinct projections for facet endpoints, and the structural contract that makes all of it work on any Lucid builder.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-`@adonis-agora/filter` applies to **any Lucid query builder** — model queries (`User.query()`), database queries (`db.from('users')`), and the relation sub-queries inside `preload`/`whereHas` callbacks. It never imports Lucid directly; it targets a small structural interface, `QueryBuilderLike`, that every Lucid builder already satisfies.
+Every filter in this library ends the same way: as clauses added to a **Lucid query builder you
+created**. Not a wrapper around one, not a repository object that hides it — the same
+`User.query()` you would have written by hand, with a few more `where`s on it.
 
----
+Step through what a single request does to it:
 
-## The `QueryBuilderLike` contract
+<CodeFlow scene="filter-pipeline" />
 
-The adapter drives the `where*`, `orderBy` and projection family. The exported `QueryBuilderLike` interface declares exactly that subset — every member is **required**, so this is the full list you must implement if you write your own:
+## The builder stays yours
+
+`applyFilterFromRequest` (and its lower-level sibling `applyFilter`) **mutate the builder and
+return the pagination**. They never construct a query, never execute one, and never hand you back
+a different object:
+
+```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilterFromRequest } from '@adonis-agora/filter'
+import { userFilter } from '#filters/user_filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query()
+
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+
+    return query.paginate(page, size)
+  }
+}
+```
+
+That one property is what makes the rest of Lucid keep working. Anything you do to the builder
+before the call is still there afterwards, and anything you do after composes with what the filter
+added:
+
+```ts title="app/controllers/users_controller.ts"
+async index(ctx: HttpContext) {
+  const query = User.query()
+    .where('tenantId', ctx.auth.user!.tenantId) // forced — the client cannot relax it
+    .whereNull('deletedAt')
+    .preload('team')
+    .withCount('posts')
+
+  const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+
+  return query.paginate(page, size)
+}
+```
+
+<Callout type="warn" title="Constraints you enforce go on the builder, not in the allow-list">
+A `where` you add yourself is AND-combined with everything the request contributed, and a column
+left **out** of `filterable` can never be touched by a client filter. That pairing — hard-code the
+scope, omit the column — is the whole recipe for a constraint a query string cannot reach. The
+declarative version of the same thing is a spec's [`tenant` scope](/docs/filter/definitions#applyfilterfromrequest--the-one-call).
+</Callout>
+
+Ordering matters in exactly one place: your own `orderBy` runs before the request's, so a client
+sort becomes a **tiebreaker** rather than a replacement. If the client's ordering should win, add
+yours after the call, or express it as the spec's `defaultSort` — which only applies when the
+request carries no sort of its own.
+
+## Pagination is resolved, not run
+
+The return value is `{ page, size }` — already clamped, not yet executed. Handing it to Lucid's
+paginator is your line of code:
+
+```ts
+const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+const users = await query.paginate(page, size)
+```
+
+`size` is clamped to `[1, maxSize]` (cap `100`, default `defaultSize ?? 25`) and `page` has a floor
+of `1`, so `?size=100000&page=-4` is a normal request rather than a table scan. A client can shrink
+a page but never enlarge it past the cap you declared.
+
+Not every list wants a paginator. Ignore the return value and execute the query directly — the
+`WHERE` and `ORDER BY` clauses are already on it:
+
+```ts title="app/controllers/exports_controller.ts"
+async index(ctx: HttpContext) {
+  const query = User.query()
+  applyFilterFromRequest(query, userFilter, ctx)
+
+  return query.limit(5_000).exec() // filtered, sorted, un-paginated
+}
+```
+
+For keyset pagination over the same spec — stable pages over a moving table, and the right choice
+for infinite scroll — use [`applyCursorFromRequest`](/docs/filter/pagination) instead.
+
+## Facet endpoints, with `distinct`
+
+Because the builder comes back filtered but unexecuted, you can project something other than rows
+off it. The classic use is populating a filter dropdown with *the values that still exist under the
+filters already applied*:
+
+```ts title="app/controllers/users_controller.ts"
+async statuses(ctx: HttpContext) {
+  const query = User.query()
+  applyFilterFromRequest(query, userFilter, ctx)
+
+  // "Which statuses exist among the rows matching the current filter?"
+  const rows = await query.distinct('status').select('status')
+
+  return rows.map((row) => row.status)
+}
+```
+
+You rarely need to write that by hand, though: `distinct` is part of the wire format. Both
+`parseFilterRequest` and `parseSpatieRequest` read `?distinct=status,baseId` (and the repeated
+`distinct[]=status&distinct[]=baseId` form) into the parsed input, and the runner applies it for
+you — alias-resolved and allow-listed exactly like a `where` field. The
+[client builder](/docs/filter/guides/client)'s `.distinct(...)` emits that parameter, so the round
+trip needs no code on your side:
+
+```ts title="app/controllers/users_controller.ts"
+// GET /users?filter[status]=active&distinct=baseId
+async index(ctx: HttpContext) {
+  const query = User.query()
+  applyFilterFromRequest(query, userFilter, ctx) // applies the DISTINCT too
+
+  return query.select('baseId')
+}
+```
+
+The manual `query.distinct(...)` above is still the right tool when the projection is *your*
+decision rather than the client's.
+
+### `distinct` takes root-table columns only
+
+A `distinct` field must be a column the query's `FROM` actually holds — a column of the root table,
+optionally qualified with the root table's own name.
+
+A **relation path is refused**, even though the same path is perfectly valid to *filter* on.
+[Relation filtering](/docs/filter/definitions/relations) compiles to a correlated `EXISTS`
+subquery, so the relation is never joined into the outer query and there is no alias to project a
+column from — `distinct=posts.title` would emit `select distinct "posts"."title" from "users"`,
+which Postgres rejects with `missing FROM-clause entry for table "posts"`. To-many
+[aggregate paths](/docs/filter/definitions/aggregates) (`posts.$count`) are refused for the same
+reason.
+
+A refused field is dropped — the rest of the `distinct` list still applies — or raises
+`InvalidColumnFilterError` when the spec sets `throwOnInvalid`. Adding the path to
+`filterable`/`relations` will not change this; it is not an allow-list decision.
+
+<Callout type="warn" title="A distinct page and its total disagree">
+Lucid's `paginate()` rebuilds the SELECT for its count leg, so `total` counts the **un-deduped**
+rows while the page itself is deduped. When the number has to match what the user is looking at,
+run your own `countDistinct` and assemble the response yourself.
+</Callout>
+
+## Queries that are not models
+
+Everything above works on a plain database query too — a reporting view, a table without a model,
+a CTE you built with the query builder:
+
+```ts title="app/controllers/reports_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilterFromRequest } from '@adonis-agora/filter'
+import { signupReportFilter } from '#filters/signup_report_filter'
+import db from '@adonisjs/lucid/services/db'
+
+export default class ReportsController {
+  async signups(ctx: HttpContext) {
+    const query = db.from('signup_report').where('archived', false)
+
+    const { page, size } = applyFilterFromRequest(query, signupReportFilter, ctx)
+
+    return query.paginate(page, size)
+  }
+}
+```
+
+The one thing a model gives you that a raw table does not is relation metadata: a spec's `model`
+option is what unlocks [to-many aggregates](/docs/filter/definitions/aggregates) like
+`posts.$count`. Everything else — operators, search, sort, distinct, cursors — is identical.
+
+## Applying one stage to a sub-query
+
+Inside a `preload` or `whereHas` callback you usually do not want the whole pipeline: no
+allow-listing (you already decided what goes in there), no pagination (paginating a to-many
+relation per parent row corrupts its counts). Three functions apply a single stage to any builder:
+
+```ts title="app/controllers/users_controller.ts"
+import { applyColumnFilters, applySearch, applySort } from '@adonis-agora/filter'
+
+const query = User.query().preload('posts', (posts) => {
+  applyColumnFilters(posts, [
+    { field: 'status', operator: 'equals', value: 'published' },
+  ])
+  applySort(posts, [{ field: 'createdAt', direction: 'desc' }])
+})
+```
+
+`applySearch(qb, term, columns)` is the third — it OR-combines an `ILIKE` across the columns you
+name, grouped, so it narrows the surrounding query instead of widening it.
+
+<Callout type="warn" title="These three trust their input">
+They take already-validated, already-pruned filters and apply them verbatim — there is no
+allow-list left to save you. Feed them values **you** wrote, never a `ColumnFilter[]` assembled
+straight from a request. Anything client-derived goes through `applyFilter` /
+`applyFilterFromRequest`, which is where the pruning lives.
+</Callout>
+
+[Relations](/docs/filter/guides/relations) covers the surrounding patterns: filtering a preloaded
+relation from its own request parameter, constraining parents with `whereHas`, and sorting by a
+`withCount` alias.
+
+## Anything with these methods is a query builder
+
+The library has no runtime dependency on Lucid. It targets a small structural interface,
+`QueryBuilderLike`, which every Lucid builder — model query, database query, relation sub-query —
+already satisfies, so you can pass one straight in with no cast and no adapter.
+
+You only need to read this section if you are implementing the interface yourself: a
+[test double](/docs/filter/testing), or a builder for something that is not Lucid at all. Every
+member is required.
 
 ```ts
 interface QueryBuilderLike {
@@ -39,153 +249,24 @@ interface QueryBuilderLike {
 }
 ```
 
-A Lucid `ModelQueryBuilder` or `DatabaseQueryBuilder` is a structural superset, so you can pass it straight in — no cast needed. The nested-callback `where`/`orWhere` overloads model Lucid's grouping closures, which is how AND/OR composition is rendered.
-
-The last five members carry the features that cannot be expressed as a plain column comparison, and they are the ones a hand-written stand-in usually forgets:
+The nested-callback `where`/`orWhere` overloads are how AND/OR composition is rendered — they model
+Lucid's grouping closures. The last five members carry everything that cannot be expressed as a
+plain column comparison, and they are the ones a hand-written stand-in forgets:
 
 | Member | Drives |
 | --- | --- |
 | `whereHas` | [relation-path filtering](/docs/filter/definitions/relations) — `posts.title` becomes a subquery, not a dotted column |
-| `whereRaw` / `orderByRaw` | [vector similarity](/docs/filter/search/vector-similarity) and full-text predicates, where the SQL is server-authored and every user value travels as a `?` binding |
-| `distinct` | the [`distinct` projection](#distinct-projections) below |
+| `whereRaw` / `orderByRaw` | [full-text](/docs/filter/search/full-text) and [vector-similarity](/docs/filter/search/vector-similarity) predicates, where the SQL is server-authored and every user value travels as a `?` binding |
+| `distinct` | the projection above |
 | `limit` | `topK` truncation on a similarity search |
 
-<Callout type="warn" title="No member is optional">
-`implements QueryBuilderLike` is checked against all of them. A class that stops
-at `orderBy` fails to compile — TypeScript reports the missing members, but a
-*mistyped* one is reported against `where` (the first overload set it tries),
-which sends you looking in the wrong place. Copy the block above verbatim.
+<Callout type="warn" title="A missing member is reported in the wrong place">
+`implements QueryBuilderLike` is checked against all of them, so a class that stops at `orderBy`
+fails to compile. TypeScript names the genuinely missing members — but a *mistyped* one is reported
+against `where`, the first overload set it tries, which sends you looking in the wrong file. Copy
+the block above verbatim, then change the bodies.
 </Callout>
 
-<Callout type="info">
-Because the binding is structural rather than a hard dependency, the adapter stays trivially unit-testable: feed it a recording mock that implements the same methods and assert the calls. See [Testing](/docs/filter/guides/testing).
-</Callout>
-
----
-
-## `applyFilter` — the full pipeline
-
-The high-level entry point. It validates and allow-list-prunes the input, applies filters → search → sort, and returns resolved pagination:
-
-```ts
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
-import User from '#models/user'
-
-const input = parseFilterRequest(request.qs())
-const query = User.query()
-
-const { page, size } = applyFilter(query, input, {
-  allowed: ['name', 'email', 'age', 'status'],
-  searchable: ['name', 'email'],
-})
-
-const users = await query.paginate(page, size)
-```
-
-See [Filter Classes](/docs/filter/guides/filter-classes) for every `FilterConfig` option.
-
----
-
-## The low-level functions
-
-When you need a single stage applied to an arbitrary builder — typically inside a `whereHas`/`preload` callback — three functions are exported. They take **already-validated, already-pruned** `ColumnFilter[]` / `SortItem[]` and apply them with no allow-listing or pagination:
-
-```ts
-import { applyColumnFilters, applySort, applySearch } from '@adonis-agora/filter'
-
-applyColumnFilters(qb, [
-  { field: 'status', operator: 'equals', value: 'active' },
-  { field: 'age', operator: 'gte', value: 18 },
-])
-
-applySort(qb, [{ field: 'createdAt', direction: 'desc' }])
-
-applySearch(qb, 'fleet', ['name', 'email']) // OR-combined ILIKE across the columns
-```
-
-<Callout type="warn">
-These functions trust their input — they do not enforce an allow-list. Only feed them filters you control, or that you have already validated and pruned. For client-derived input on the parent query, always go through `applyFilter`.
-</Callout>
-
----
-
-## Pagination
-
-`applyFilter` resolves but does not execute pagination. Drive Lucid's paginator with the returned values:
-
-```ts
-const { page, size } = applyFilter(query, input, { allowed: ['name'] })
-const result = await query.paginate(page, size) // 1-based page, matches the resolver
-```
-
-- `size` is clamped to `[1, maxSize]` (default cap `100`, default value `defaultSize ?? 25`).
-- `page` has a floor of `1`.
-
-If you don't want pagination, ignore the return value and execute the query directly — the `WHERE` / `ORDER BY` clauses are already on it:
-
-```ts
-applyFilter(query, input, { allowed: ['name', 'status'] })
-const all = await query.exec()
-```
-
----
-
-## DISTINCT projections
-
-Because `applyFilter` only mutates the builder's clauses and hands execution back to you, you can layer a `DISTINCT` projection on the same filtered query — useful for populating a filter dropdown with the values that exist under the current filters:
-
-```ts
-const input = parseFilterRequest(request.qs())
-const query = User.query()
-
-applyFilter(query, input, { allowed: ['status', 'baseId'] })
-
-// "Which statuses exist among the rows matching the current filter?"
-const rows = await query.distinct('status').select('status')
-// → [{ status: 'active' }, { status: 'inactive' }]
-```
-
-You rarely need to write that by hand, though: `distinct` is part of the wire format. Both `parseFilterRequest` and `parseSpatieRequest` read `?distinct=status,baseId` (and the repeated `distinct[]=status&distinct[]=baseId` form) into `input.distinct`, and `applyFilter` applies it for you — alias-resolved and allow-listed exactly like a `where` field. The [client builder](/docs/filter/guides/client)'s `.distinct(...)` emits that parameter, so the round trip needs no code on your side:
-
-```ts
-// GET /users?filter[status]=active&distinct=baseId
-const input = parseFilterRequest(request.qs())   // → { filters: [...], distinct: ['baseId'] }
-const query = User.query()
-
-applyFilter(query, input, { allowed: ['status', 'baseId'] })  // applies the DISTINCT too
-
-const rows = await query.select('baseId')
-```
-
-The manual `query.distinct(...)` above is still the right tool when the projection is *your* decision rather than the client's.
-
-### `distinct` takes root-table columns only
-
-A `distinct` field must be a column the query's `FROM` actually holds — a column of the root table (optionally qualified with the root table's own name).
-
-A **relation path is refused**, even though the same path is perfectly valid to *filter* on. [Relation filtering](/docs/filter/definitions/relations) compiles to a correlated `EXISTS` subquery, so the relation is never joined into the outer query and there is no alias to project a column from — `distinct=posts.title` would emit `select distinct "posts"."title" from "users"`, which Postgres rejects with `missing FROM-clause entry for table "posts"`. To-many [aggregate paths](/docs/filter/definitions/aggregates) (`posts.$count`) are refused for the same reason.
-
-A refused field is dropped (the rest of the `distinct` list still applies), or raises `InvalidColumnFilterError` when the spec sets `throwOnInvalid`. Adding the path to `filterable`/`relations` will not change this — it is not an allow-list decision.
-
-<Callout type="info">
-  `distinct` and `paginate()` do not agree on the total: Lucid's count leg
-  rebuilds the SELECT, so `total` counts the **un-deduped** rows while the page
-  itself is deduped. Run your own `countDistinct` when the total has to match.
-</Callout>
-
----
-
-## Database (non-model) queries
-
-The same functions work on a raw Lucid database query — it satisfies `QueryBuilderLike` too:
-
-```ts
-import db from '@adonisjs/lucid/services/db'
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
-
-const input = parseFilterRequest(request.qs())
-const query = db.from('users')
-
-const { page, size } = applyFilter(query, input, { allowed: ['name', 'status'] })
-return query.paginate(page, size)
-```
+You do not have to write that class for tests: `@adonis-agora/filter/testing` ships a recording
+`MockQueryBuilder` that already implements it and records every call for assertion. See
+[Testing Utilities](/docs/filter/testing).

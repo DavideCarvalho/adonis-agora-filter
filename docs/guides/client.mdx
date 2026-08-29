@@ -13,8 +13,6 @@ import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 npm install @adonis-agora/filter-client
 ```
 
----
-
 ## The builder
 
 `filterQuery()` returns a fresh `FilterQueryBuilder`. Chain conditions, then terminate with `toQueryString()`, `build()`, or `toFlatObject()`.
@@ -95,8 +93,6 @@ filterQuery()
 filterQuery().equals('a', 1).clear() // resets everything to empty
 ```
 
----
-
 ## AND / OR groups
 
 `.or()` and `.and()` take a callback that receives a sub-builder; its conditions become a nested group:
@@ -115,8 +111,6 @@ filterQuery()
 <Callout type="info">
 Groups are emitted as a `ColumnFilter` with an empty `field` and an `OR`/`AND` array — the "group node" shape the server's validator recognizes. Groups are not representable as flat objects, so `toQueryString()` falls back to the indexed `where[i][...]` notation when any group is present; `toFlatObject()` ignores them.
 </Callout>
-
----
 
 ## Sort, pagination, search, include, distinct
 
@@ -138,13 +132,15 @@ Eager-loading stays your call, because only you know which relations are safe to
 expose — read the list, check it against your own allow-list, and call Lucid's
 `preload` yourself:
 
-```ts
-const input = parseSpatieRequest(request.qs())
+```ts title="app/controllers/users_controller.ts"
+const PRELOADABLE = ['posts', 'team'] as const
+
+const input = parseSpatieRequest(ctx.request.qs())
 const query = User.query()
 
-applyFilter(query, input, { allowed: ['name', 'status'] })
+applyFilterFromRequest(query, userFilter, ctx, { input })
 for (const relation of input.include ?? []) {
-  if (PRELOADABLE.includes(relation)) query.preload(relation as any)
+  if (PRELOADABLE.includes(relation as any)) query.preload(relation as any)
 }
 ```
 
@@ -154,8 +150,6 @@ The same goes for `select` (JSON:API sparse fieldsets) — it is parsed, never a
 <Callout type="warn">
 `.page(page, size)` uses a **0-based** page index (TanStack convention). The server's `applyFilter` resolves a **1-based** page for Lucid's `paginate()`. If you send the client's page straight through, add `1` at the boundary — or use `toQueryString()`, where the page is passed verbatim and you normalize server-side.
 </Callout>
-
----
 
 ## Output formats
 
@@ -181,8 +175,6 @@ string straight into a URL. It matters in exactly one place: a test that asserts
 the string. Compare against the encoded form shown here, or decode first with
 `decodeURIComponent(qs)`.
 </Callout>
-
----
 
 ## The typed builder
 
@@ -279,8 +271,6 @@ filterQueryTyped<UserFields>()
 `whereDynamic`/`sortDynamic` only bypass the **client's** compile-time field union — a convenience, never a security control. The server's `applyFilter` allow-list is the actual boundary: a dynamic field the server doesn't whitelist is dropped (or rejected under `throwOnInvalid`) regardless of what the client sent.
 </Callout>
 
----
-
 ## Reactivity
 
 The builder is also an observable store, so framework adapters can re-render on mutation. Every mutating method bumps an internal version, invalidates a cached snapshot, and notifies subscribers.
@@ -295,7 +285,7 @@ This is the exact contract React's `useSyncExternalStore` needs:
 
 <Tabs items={['React', 'Vanilla']}>
   <Tab value="React">
-```ts
+```ts title="inertia/hooks/use_filter_query.ts"
 import { useSyncExternalStore, useRef } from 'react'
 import { filterQuery } from '@adonis-agora/filter-client'
 
@@ -328,8 +318,6 @@ unsubscribe()
 <Callout type="info">
 `getSnapshot()` returns the **same object reference** until the next mutation — required by `useSyncExternalStore` to avoid infinite render loops. Don't mutate the returned snapshot; treat it as immutable.
 </Callout>
-
----
 
 ## TanStack Table sync
 
@@ -367,8 +355,6 @@ const body = tanstackTableToFilterQuery({
 <Callout type="warn">
 TanStack's `pagination.pageIndex` is 0-based and is passed straight to the builder's `.page()`. Keep the [0-based vs 1-based](#sort-pagination-search-include-distinct) note in mind when the server reads it.
 </Callout>
-
----
 
 ## The rest of the public surface
 
@@ -422,19 +408,26 @@ assertions.
 | `FieldTypeKind`, `FilterFieldTypes` | the field-kind declarations that drive per-field operator narrowing |
 | `ValueAt`, `Base`, `OperatorsFor`, `ValueForOp`, `StringFieldsOf`, `OrderableFieldsOf` | the type-level helpers behind that narrowing, for building your own typed wrappers |
 
----
-
 ## Round trip
 
 The client and server agree on the wire format by construction — what `.toQueryString()` emits is what `parseFilterRequest` reads:
 
-```ts
-// client
+```ts title="inertia/pages/users/index.tsx"
 const qs = filterQuery().contains('name', 'Al').gte('age', 18).sortDesc('createdAt').toQueryString()
 
-// server
-const input = parseFilterRequest(request.qs())
-applyFilter(User.query(), input, { allowed: ['name', 'age'], sortable: ['createdAt'] })
+await fetch(`/users?${qs}`)
+```
+
+```ts title="app/controllers/users_controller.ts"
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query()
+
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+
+    return query.paginate(page, size)
+  }
+}
 ```
 
 See [Operators](/docs/filter/guides/operators) for the full wire-format table and [Getting Started](/docs/filter/getting-started) for the end-to-end flow.

@@ -8,8 +8,6 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 `parseFilterRequest` covers the common case. Three additional, composable helpers cover the richer Spatie / JSON:API surface, control **where** input is sourced, and normalize field-name casing. All are pure reshapes — no validation or allow-listing (that happens downstream in `applyFilter`).
 
----
-
 ## `parseSpatieRequest` — the full Spatie/JSON:API shape
 
 A superset of `parseFilterRequest`: it understands the same `filter` / `sort` / `search` / `distinct` shapes **plus** JSON:API relation includes, sparse fieldsets, and cursor pagination. It returns a `SpatieInput` (a `FilterInput` extended with `select`, `include`, and cursor params) — ready to hand to `applyFilter` (offset) or `applyCursor` (keyset).
@@ -36,8 +34,6 @@ const input = parseSpatieRequest(request.qs())
 
 `page[after]` / `page[before]` route to cursor pagination (`after`/`first`, `before`/`last`); otherwise `page[number]` / `page[size]` route to offset. `after` wins if both cursor bounds are present.
 
----
-
 ## `resolveInputFromRequest` — where input comes from
 
 Reads the raw structured input from a request according to an `InputSource` — useful when filters arrive in the body (a complex `POST /search`) rather than the query string:
@@ -56,8 +52,6 @@ const raw = resolveInputFromRequest(req, 'auto')
 | `(req) => …` (a function) | a custom extractor |
 
 The request is treated structurally (`{ method, query, body }`), so an AdonisJS `HttpContext.request` or a plain object both work. The result is always a fresh shallow copy.
-
----
 
 ## `normalizeInput` — key casing
 

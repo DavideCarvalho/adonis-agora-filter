@@ -12,8 +12,6 @@ import { Callout } from 'fumadocs-ui/components/callout';
 This is **not** embedding similarity. It matches *words* against a tsvector document. To rank rows by a query *embedding*, see [Vector Similarity](/docs/filter/search/vector-similarity).
 </Callout>
 
----
-
 ## Config — route `search` through tsvector
 
 Add `fullText` to a `defineFilter` spec (or a raw `FilterConfig`). When set, the request's `search` term routes through tsvector full-text search **instead of** the ILIKE `searchable` scan.
@@ -49,8 +47,6 @@ ORDER BY ts_rank("search_vector", websearch_to_tsquery('english', ?)) desc
 | `language` | Postgres text-search config for `websearch_to_tsquery` / `to_tsvector`. Default `'english'`. |
 | `rank` | Add `ORDER BY ts_rank(...) DESC` for best-match-first. Off by default (it changes default ordering). |
 
----
-
 ## Text columns (no tsvector column)
 
 If you don't have a precomputed tsvector column, point `column` at plain text column(s); they're wrapped in `to_tsvector` at query time, coalescing NULLs so a null column can't null the whole document:
@@ -68,8 +64,6 @@ WHERE to_tsvector('portuguese', coalesce("title", '') || ' ' || coalesce("body",
 Query-time `to_tsvector` cannot use an index and re-tokenizes every row — fine for small tables, but for anything large prefer a stored, GIN-indexed `tsvector` column (`columnKind: 'tsvector'`).
 </Callout>
 
----
-
 ## Why `websearch_to_tsquery`
 
 `websearch_to_tsquery` (not the raw `to_tsquery`) parses arbitrary user input the way a search box works — multi-word text, `"quoted phrases"`, `-exclude`, `or` — **without throwing a syntax error** on stray punctuation. That makes it safe to feed raw user text.
@@ -77,8 +71,6 @@ Query-time `to_tsvector` cannot use an index and re-tokenizes every row — fine
 ## Injection safety
 
 The user query string **always** travels as a positional binding (`websearch_to_tsquery('<lang>', ?)`) — it is never interpolated into SQL. The only spliced fragments are the column name(s) and the language config, each validated against a strict identifier charset before use, so neither can carry injection.
-
----
 
 ## Direct use
 

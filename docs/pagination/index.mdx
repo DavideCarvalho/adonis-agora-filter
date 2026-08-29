@@ -13,8 +13,6 @@ Offset pagination (`applyFilter` → `page`/`size`) is simple but drifts as rows
 Cursor pagination goes through the **same allow-list boundary** as `applyFilter` — filters, search, and sort are validated and pruned identically. Only the paging mechanism differs.
 </Callout>
 
----
-
 ## The building blocks
 
 | Export | Role |
@@ -25,56 +23,70 @@ Cursor pagination goes through the **same allow-list boundary** as `applyFilter`
 | `buildKeyset(sorts, primaryKey)` | The effective sort with a stable PK tiebreaker appended (used internally). |
 | `encodeCursor` / `decodeCursor` | Opaque, URL-safe base64url codec for keyset values (round-trips `Date`s). |
 
----
-
 ## With a `FilterSpec` — `applyCursorFromRequest`
 
 The idiomatic path. Same spec you use for offset, cursor params instead of `page`/`size`:
 
 ```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
 import { applyCursorFromRequest, buildCursorPage } from '@adonis-agora/filter'
 import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
-async index(ctx: HttpContext) {
-  const query = User.query()
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query()
 
-  // primaryKey defaults to 'id'
-  const resolved = applyCursorFromRequest(query, userFilter, ctx, { primaryKey: 'id' })
+    // primaryKey defaults to 'id'
+    const resolved = applyCursorFromRequest(query, userFilter, ctx, { primaryKey: 'id' })
 
-  const rows = await query.exec()
-  const page = buildCursorPage(rows.map((r) => r.serialize()), resolved)
+    const rows = await query.exec()
+    const page = buildCursorPage(
+      rows.map((row) => row.serialize()),
+      resolved,
+    )
 
-  return {
-    data: page.items,
-    nextCursor: page.nextCursor, // opaque string, or null on the last page
-    prevCursor: page.prevCursor,
-    hasNext: page.hasNext,
-    hasPrev: page.hasPrev,
+    return {
+      data: page.items,
+      nextCursor: page.nextCursor, // opaque string, or null on the last page
+      prevCursor: page.prevCursor,
+      hasNext: page.hasNext,
+      hasPrev: page.hasPrev,
+    }
   }
 }
 ```
 
 Cursor params are read from the query string as `after` / `before` / `first` / `last` (or the JSON:API `page[after]` / `page[before]` / `page[size]` shapes). `after` and `before` are mutually exclusive; `after` wins if both are given.
 
----
-
 ## Low-level — `applyCursor` + `buildCursorPage`
 
 Without a spec, drive the runner directly with a `FilterInput` + cursor params:
 
-```ts
-import { applyCursor, buildCursorPage } from '@adonis-agora/filter'
+```ts title="app/controllers/audit_logs_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyCursor, buildCursorPage, parseFilterRequest } from '@adonis-agora/filter'
+import AuditLog from '#models/audit_log'
 
-const resolved = applyCursor(
-  User.query(),
-  { sort: [{ field: 'name', direction: 'asc' }], after: cursor, first: 20 },
-  { allowed: ['name'], primaryKey: 'id' },
-)
-// resolved: { keyset, size, backward, hasCursor }
+export default class AuditLogsController {
+  async index({ request }: HttpContext) {
+    const query = AuditLog.query()
 
-const rows = await query.exec()
-const page = buildCursorPage(rows, resolved)
+    const resolved = applyCursor(
+      query,
+      { ...parseFilterRequest(request.qs()), after: request.input('after'), first: 20 },
+      { allowed: ['action', 'actorId'], sortable: ['createdAt'], primaryKey: 'id' },
+    )
+    // resolved: { keyset, size, backward, hasCursor }
+
+    const rows = await query.exec()
+
+    return buildCursorPage(
+      rows.map((row) => row.serialize()),
+      resolved,
+    )
+  }
+}
 ```
 
 <Steps>
@@ -96,13 +108,9 @@ const page = buildCursorPage(rows, resolved)
 `buildCursorPage` reads keyset values off each row by field name (dotted paths like `author.name` are walked). Pass serialized/plain objects (e.g. `model.serialize()`), and make sure the keyset columns are present on them.
 </Callout>
 
----
-
 ## Backward paging
 
 A `before` cursor pages backward: the keyset directions are internally reversed so the seek and ordering walk the other way, the rows come back reversed, and `buildCursorPage` flips them to restore your requested order. The boundary cursors round-trip regardless of direction, so `prevCursor` from a forward page is a valid `before` for the previous page.
-
----
 
 ## Cursors are opaque
 

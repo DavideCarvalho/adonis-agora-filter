@@ -13,8 +13,6 @@ The free functions ([`applyFilter`](/docs/filter/getting-started), [`applyFilter
 `@adonis-agora/filter` has no runtime dependency on Lucid — the free functions target a structural `QueryBuilderLike` interface. The provider's only job is to register the chainable methods; it lazy-imports `@adonisjs/lucid/orm` in `boot()`, so Lucid stays a peer, not a hard dependency. Register it if you want the `.applyFilterFromRequest()` / `.filterPaginate()` chain; skip it and use the free functions otherwise.
 </Callout>
 
----
-
 ## Register the provider
 
 `node ace add @adonis-agora/filter` wires it for you — it registers this provider and the [`make:filter-client` commands barrel](/docs/filter/codegen#makefilter-client--the-ace-command), and publishes no config file (a filter policy is a `defineFilter` call in your own code, not global configuration). To do it by hand, add `./filter_provider` to the `providers` array in `adonisrc.ts`:
@@ -30,8 +28,6 @@ The free functions ([`applyFilter`](/docs/filter/getting-started), [`applyFilter
 ```
 
 On `boot()` the provider imports Lucid's `ModelQueryBuilder` and calls `registerFilterMacros(ModelQueryBuilder)`, which defines two macros on the builder prototype — so every model query instance gains them.
-
----
 
 ## The macros
 
@@ -59,21 +55,21 @@ export default class UsersController {
 
 Applies the same, then calls `paginate(page, size)` with the resolved pagination — filter + paginate in one terminal call, returning Lucid's paginator:
 
-```ts
-async index(ctx: HttpContext) {
-  return User.query().filterPaginate(userFilter, ctx)
+```ts title="app/controllers/users_controller.ts"
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    return User.query().filterPaginate(userFilter, ctx)
+  }
 }
 ```
 
 That single line is the terse equivalent of:
 
-```ts
+```ts title="app/controllers/users_controller.ts"
 const query = User.query()
 const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 return query.paginate(page, size)
 ```
-
----
 
 ## The optional `ctx` argument
 
@@ -81,8 +77,8 @@ Both macros take `ctx` **optionally**. When omitted, the active `HttpContext` is
 
 Pass it explicitly when there is no ambient request — a job, a command, a test — where `getOrFail()` would throw:
 
-```ts
-// Inside a scheduled job / ace command — no ambient HttpContext:
+```ts title="app/jobs/export_users.ts"
+// Inside a scheduled job / ace command — no ambient HttpContext, so ctx is explicit:
 const rows = await User.query().applyFilterFromRequest(userFilter, ctx)
 ```
 
@@ -90,13 +86,11 @@ const rows = await User.query().applyFilterFromRequest(userFilter, ctx)
 The free `applyFilterFromRequest(query, spec, ctx, options?)` always requires an explicit `ctx` — it is framework-agnostic and reads nothing from AsyncLocalStorage. The AsyncLocalStorage fallback lives only in the macro layer.
 </Callout>
 
----
-
 ## Direct registration
 
 If you register macros yourself (a custom provider, a non-standard boot), `registerFilterMacros` is exported for it — hand it the `ModelQueryBuilder` class:
 
-```ts
+```ts title="providers/app_provider.ts"
 import { ModelQueryBuilder } from '@adonisjs/lucid/orm'
 import { registerFilterMacros } from '@adonis-agora/filter'
 
@@ -104,8 +98,6 @@ registerFilterMacros(ModelQueryBuilder)
 ```
 
 It is idempotent enough to call once at boot; calling twice re-defines the macros to the same implementations. TypeScript picks up the method signatures through the package's `declare module '@adonisjs/lucid/types/model'` augmentation, so `.applyFilterFromRequest()` / `.filterPaginate()` are typed on every model query once the package is imported.
-
----
 
 ## Which form to use
 

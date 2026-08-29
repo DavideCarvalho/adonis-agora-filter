@@ -1,115 +1,142 @@
 ---
 title: Relations
 icon: GitBranch
-description: Filtering across Lucid relationships — preloading filtered relations, constraining the parent with whereHas, and the structural QueryBuilderLike contract.
+description: Filtering across Lucid relationships — dotted paths that become whereHas subqueries, filtering the rows you preload, and sorting by a relation aggregate.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-`@adonis-agora/filter` drives a Lucid query builder through a structural interface (`QueryBuilderLike`). It does not invent its own join machinery — instead it composes with Lucid's relationship APIs (`preload`, `whereHas`, `withCount`). This guide shows the two ways relations show up in a filtered endpoint: **filtering the related rows you load**, and **filtering the parent rows by a relation**.
+This library does not invent join machinery. A relation filter becomes Lucid's own
+`whereHas`, a filtered eager-load becomes Lucid's own `preload` callback, and a relation aggregate
+is Lucid's own `withCount`. All of it works because a relation sub-query is itself a
+`QueryBuilderLike` — the same contract the root builder satisfies.
 
-<Callout type="info">
-The structural adapter means anything that satisfies `QueryBuilderLike` — a model query, a relation sub-query inside a `whereHas`/`preload` callback — can be handed to `applyFilter` (or to the lower-level `applyColumnFilters` / `applySort` / `applySearch`). Relations are just nested query builders.
-</Callout>
+Two things show up in a filtered endpoint, and they are not the same question: **which parents come
+back** (a `whereHas` constraint), and **which related rows you load for them** (a `preload`
+constraint).
 
----
+## A dotted field is a relation path
 
-## Filtering a preloaded relation
+Declare the hop in the spec's `relations` map and the dotted path becomes filterable. Every segment
+but the last is a relation; the last is the column the operator lands on inside the subquery:
 
-`preload`'s callback receives a relation query builder, which is `QueryBuilderLike`. Run a separate parsed input through it to filter the related rows you eager-load — without touching which parents come back:
-
-```ts title="app/controllers/users_controller.ts"
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+```ts title="app/filters/user_filter.ts"
+import { defineFilter } from '@adonis-agora/filter'
 import User from '#models/user'
 
-async index({ request }: HttpContext) {
-  // parent filters live under `filter[...]`; relation filters under their own param
-  const userInput = parseFilterRequest(request.qs())
-  const postInput = parseFilterRequest({ filter: request.qs().postFilter })
+export const userFilter = defineFilter({
+  model: User,
 
-  const query = User.query().preload('posts', (postsQuery) => {
-    applyFilter(postsQuery, postInput, {
-      allowed: ['title', 'status'],
-      sortable: ['createdAt'],
+  filterable: ['name', 'email', 'status'],
+  sortable: ['name', 'createdAt'],
+
+  relations: {
+    posts: { filterable: ['title', 'status'] }, // enables filter[posts.title] / filter[posts.status]
+  },
+})
+```
+
+```txt
+GET /users?filter[posts.status]=published
+→ User.query().whereHas('posts', (q) => q.where('status', 'published'))
+```
+
+The relation does not have to be joined — Lucid builds the correlated subquery. Deeper paths nest:
+`posts.comments.body` becomes a `whereHas` inside a `whereHas`, capped by the spec's `maxDepth`.
+The declarative form and its depth rules are covered in
+[Relation Filtering](/docs/filter/definitions/relations).
+
+<Callout type="warn" title="A dotted filter is a subquery, not a joined column">
+If you have genuinely joined the relation and want a predicate on the joined table
+(`where('posts.title', …)`) rather than an `EXISTS` subquery, select an alias for that column and
+filter on the alias — or drop to `applyColumnFilters` on the joined builder.
+</Callout>
+
+## Filtering the rows you preload
+
+`preload`'s callback receives a relation query builder, so a second filter can run inside it. This
+narrows the loaded posts without changing which users come back:
+
+```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilterFromRequest, applyFilter, parseFilterRequest } from '@adonis-agora/filter'
+import { userFilter } from '#filters/user_filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    // parents read `filter[...]`; the preloaded relation reads its own param
+    const postInput = parseFilterRequest({ filter: ctx.request.qs().postFilter })
+
+    const query = User.query().preload('posts', (postsQuery) => {
+      applyFilter(postsQuery, postInput, {
+        allowed: ['title', 'status'],
+        sortable: ['createdAt'],
+      })
     })
-  })
 
-  const { page, size } = applyFilter(query, userInput, {
-    allowed: ['name', 'email', 'status'],
-  })
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 
-  return query.paginate(page, size)
+    return query.paginate(page, size)
+  }
 }
 ```
 
-Each `applyFilter` enforces its own allow-list, so the relation's filterable columns are scoped independently of the parent's.
+Each call carries its own allow-list, so what a client may filter on the relation is scoped
+independently of the parent.
 
 <Callout type="warn">
-`applyFilter` returns pagination, but you almost never want to paginate inside a `preload` callback — paginating a to-many relation per parent row corrupts counts. Ignore the returned `{ page, size }` there (or call the lower-level `applyColumnFilters` / `applySort` directly).
+Ignore the `{ page, size }` returned inside a `preload` callback. Paginating a to-many relation
+per parent row corrupts the counts; if the return value tempts you, call the lower-level
+`applyColumnFilters` / `applySort` there instead.
 </Callout>
 
----
+## Constraining the parent yourself
 
-## Filtering the parent by a relation (`whereHas`)
+When the constraint is a server policy rather than a client filter, write the `whereHas` directly —
+the low-level stage functions apply one piece of the pipeline to any sub-builder:
 
-To restrict which *parents* come back based on their related rows, apply the filter inside a `whereHas` callback. The callback's sub-query is also `QueryBuilderLike`:
+```ts title="app/controllers/users_controller.ts"
+import { applyColumnFilters } from '@adonis-agora/filter'
 
-```ts
 const query = User.query().whereHas('posts', (postsQuery) => {
   applyColumnFilters(postsQuery, [
     { field: 'status', operator: 'equals', value: 'published' },
     { field: 'title', operator: 'contains', value: 'release' },
   ])
 })
-// → users having at least one post WHERE status = 'published' AND title ILIKE '%release%'
+// users with at least one post where status = 'published' and title ilike '%release%'
 ```
 
-`applyColumnFilters`, `applySort`, and `applySearch` are exported from `@adonis-agora/filter` for exactly this — applying a piece of the filter pipeline to an arbitrary sub-builder without the allow-list/pagination wrapper.
+<Callout type="warn" title="The stage functions trust their input">
+`applyColumnFilters`, `applySort` and `applySearch` do not allow-list. Hand them filters you wrote,
+or prune client input first — otherwise a query string reaches columns the spec never exposed.
+</Callout>
 
-```ts
-import { applyColumnFilters, applySearch, applySort } from '@adonis-agora/filter'
+## Sorting by a relation aggregate
+
+`withCount` selects a `posts_count` column, and a column that exists can be sorted on. List the
+alias in `sortable` and `?sort=-posts_count` works like any other sort:
+
+```ts title="app/controllers/users_controller.ts"
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query().withCount('posts')
+
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+
+    return query.paginate(page, size)
+  }
+}
 ```
 
-<Callout type="info">
-These low-level functions do **not** allow-list. When you feed them client-derived `ColumnFilter[]`, prune first (e.g. run the input through `applyFilter` against a scratch builder, or validate the fields yourself) so a `whereHas` sub-query can't reference arbitrary relation columns.
-</Callout>
-
----
-
-## Dotted field names are relation paths
-
-Field names may contain dots — `validateColumnFilter` accepts `^[a-zA-Z_][a-zA-Z0-9_.]*$`. A dotted field like `author.name` is a **relation path**: every segment but the last is a relation hop, and the adapter translates it into a nested Lucid `whereHas` subquery (the final segment is the bare column the operator lands on inside it):
-
-```ts
-applyFilter(query, input, { allowed: ['author.name', 'status'] })
-// ?filter[author.name]=Al  →  whereHas('author', (q) => q.where('name', 'Al'))
-```
-
-So you do **not** need to join the relation yourself — Lucid builds the subquery. Deeper paths nest `whereHas` within `whereHas` (`posts.comments.body` → `whereHas('posts', q => q.whereHas('comments', c => c.where('body', …)))`).
-
-<Callout type="info">
-The declarative way to whitelist relation paths (with a depth cap) is a `defineFilter` spec's `relations` map — see [Relation Filtering](/docs/filter/definitions/relations). With a raw `FilterConfig` you allow-list the dotted path by name (`allowed: ['author.name']`) as above.
-</Callout>
-
-<Callout type="warn" title="whereHas, not a joined column">
-Because a dotted filter becomes a `whereHas` subquery, the relation does **not** need to be joined for filtering. If you have genuinely joined a relation and want to reference its column directly (a real `where('authors.name', …)` on the joined table) rather than a subquery, filter on a non-dotted alias you select for it, or use the low-level `applyColumnFilters` on the joined builder.
-</Callout>
-
----
-
-## Counting and ordering by a relation
-
-Because the parent query is just a Lucid query builder, you can layer relation aggregates before or after `applyFilter`:
-
-```ts
-const query = User.query().withCount('posts')
-
-const { page, size } = applyFilter(query, input, {
-  allowed: ['name', 'status'],
-  sortable: ['name', 'createdAt', 'posts_count'], // allow ordering by the aggregate alias
+```ts title="app/filters/user_filter.ts"
+export const userFilter = defineFilter({
+  model: User,
+  filterable: ['name', 'status'],
+  sortable: ['name', 'createdAt', 'posts_count'], // the alias withCount selects
 })
-
-return query.paginate(page, size)
 ```
 
-Since `posts_count` is selected by `withCount`, listing it in `sortable` lets clients sort by it via `?sort=-posts_count`.
+For a count that the spec derives on its own — including filtering on it, not just sorting — use a
+[computed aggregate](/docs/filter/definitions/aggregates) instead of `withCount`.

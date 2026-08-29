@@ -12,8 +12,6 @@ The package ships a recording query-builder stand-in under the **`@adonis-agora/
 This is the same recorder the library's own test suite uses. The [Testing guide](/docs/filter/guides/testing) shows the broader picture (hand-rolled mocks, allow-list assertions, and end-to-end Japa tests); this page covers the shipped helper you can import directly instead of writing your own.
 </Callout>
 
----
-
 ## `MockQueryBuilder` / `makeMockQueryBuilder`
 
 ```ts title="tests/unit/user_filter.spec.ts"
@@ -45,8 +43,6 @@ Every builder method records its call as `{ method, args }`. Helpers for asserti
 
 `flatten()` collects leaf calls regardless of grouping depth, so assertions don't care about the precise AND/OR nesting.
 
----
-
 ## Asserting relation subqueries
 
 A dotted relation-path filter records a `whereHas(relation, …)` and runs its nested callback against a child recorder — so you can prove a `posts.title` filter became a real subquery:
@@ -62,8 +58,6 @@ assert.deepEqual(qb.find('whereHas')?.args, ['posts'])
 // the leaf lands on the bare column inside the relation subquery:
 assert.deepInclude(qb.flatten(), { method: 'where', args: ['title', 'Hi'] })
 ```
-
----
 
 ## Asserting raw SQL (search + vector)
 
@@ -84,8 +78,6 @@ const vq = makeMockQueryBuilder()
 applyVectorSimilarity(vq, { column: 'embedding', vector: [0.1, 0.2, 0.3] })
 assert.deepEqual(vq.find('orderByRaw')?.args, ['"embedding" <=> ?::vector asc', ['[0.1,0.2,0.3]']])
 ```
-
----
 
 ## Testing a whole spec from a request
 
