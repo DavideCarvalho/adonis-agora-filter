@@ -8,8 +8,6 @@ import { Callout } from 'fumadocs-ui/components/callout';
 
 Validation in `@adonis-agora/filter` happens at two levels: the library's own **structural validation** (always on, runs inside `applyFilter`), and your **application validation** (optional, VineJS — for type coercion and business rules). This guide covers both.
 
----
-
 ## Structural validation (built in)
 
 Every time `applyFilter` is given filters, it runs `validateColumnFilters` before applying anything. This guards the shape of each `ColumnFilter`, independent of your allow-list:
@@ -26,7 +24,7 @@ Every time `applyFilter` is given filters, it runs `validateColumnFilters` befor
 
 Each failure throws `InvalidColumnFilterError` with a descriptive message.
 
-```ts
+```ts title="tests/unit/validation.spec.ts"
 import { validateColumnFilters, InvalidColumnFilterError } from '@adonis-agora/filter'
 
 try {
@@ -42,25 +40,19 @@ try {
 `validateColumnFilter` and `validateColumnFilters` are exported so you can run them manually — e.g. before feeding client-derived filters into a `whereHas` sub-query via `applyColumnFilters`, which does **not** validate on its own.
 </Callout>
 
----
-
 ## throwOnInvalid — allow-list rejection
 
 Structural validation guards the *shape*; the [allow-list](/docs/filter/guides/filter-classes) guards *which columns*. By default a disallowed field is dropped silently. Set `throwOnInvalid: true` to reject the request instead:
 
-```ts
-import { applyFilter, InvalidColumnFilterError } from '@adonis-agora/filter'
-
-try {
-  applyFilter(query, input, { allowed: ['name'], throwOnInvalid: true })
-} catch (err) {
-  // InvalidColumnFilterError — 'Field "secret" is not filterable.'
-}
+```ts title="app/filters/user_filter.ts"
+export const userFilter = defineFilter({
+  model: User,
+  filterable: ['name', 'email', 'status'],
+  throwOnInvalid: true, // a disallowed column is a 400, not a silent drop
+})
 ```
 
-Both structural failures and (when strict) allow-list failures surface as the same `InvalidColumnFilterError`, so you can handle them in one place.
-
----
+Both structural failures and (when strict) allow-list failures surface as the same `InvalidColumnFilterError`, so one `catch` covers both. Which one you want is a product decision: dropping keeps a stale bookmark working, throwing tells an API consumer their query was wrong.
 
 ## Turning failures into HTTP 400
 
@@ -68,42 +60,45 @@ In an AdonisJS controller, map `InvalidColumnFilterError` to a `400`:
 
 ```ts title="app/controllers/users_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { parseFilterRequest, applyFilter, InvalidColumnFilterError } from '@adonis-agora/filter'
+import { applyFilterFromRequest, InvalidColumnFilterError } from '@adonis-agora/filter'
+import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
-async index({ request, response }: HttpContext) {
-  const input = parseFilterRequest(request.qs())
-  const query = User.query()
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query()
 
-  try {
-    const { page, size } = applyFilter(query, input, {
-      allowed: ['name', 'email', 'status'],
-      throwOnInvalid: true,
-    })
-    return query.paginate(page, size)
-  } catch (err) {
-    if (err instanceof InvalidColumnFilterError) {
-      return response.badRequest({ message: err.message })
+    try {
+      const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+      return query.paginate(page, size)
+    } catch (error) {
+      if (error instanceof InvalidColumnFilterError) {
+        return ctx.response.badRequest({ message: error.message })
+      }
+      throw error
     }
-    throw err
   }
 }
 ```
 
-To handle it app-wide, add a branch in `app/exceptions/handler.ts`:
+One endpoint at a time is rarely what you want. Put the branch in the exception handler and every
+filtered endpoint answers the same way:
 
 ```ts title="app/exceptions/handler.ts"
+import { ExceptionHandler } from '@adonisjs/core/http'
+import type { HttpContext } from '@adonisjs/core/http'
 import { InvalidColumnFilterError } from '@adonis-agora/filter'
 
-async handle(error: unknown, ctx: HttpContext) {
-  if (error instanceof InvalidColumnFilterError) {
-    return ctx.response.badRequest({ message: error.message })
+export default class HttpExceptionHandler extends ExceptionHandler {
+  async handle(error: unknown, ctx: HttpContext) {
+    if (error instanceof InvalidColumnFilterError) {
+      return ctx.response.badRequest({ message: error.message })
+    }
+
+    return super.handle(error, ctx)
   }
-  return super.handle(error, ctx)
 }
 ```
-
----
 
 ## Layering VineJS
 
@@ -134,20 +129,23 @@ export const listUsersValidator = vine.compile(
 ```
 
 ```ts title="app/controllers/users_controller.ts"
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilterFromRequest, parseFilterRequest } from '@adonis-agora/filter'
 import { listUsersValidator } from '#validators/list_users'
+import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
-async index({ request }: HttpContext) {
-  const payload = await request.validateUsing(listUsersValidator)
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    // VineJS validates and coerces the raw query, then it is parsed into filter input
+    const payload = await ctx.request.validateUsing(listUsersValidator)
+    const input = parseFilterRequest(payload)
 
-  const input = parseFilterRequest(payload)          // already coerced + bounded
-  const query = User.query()
-  const { page, size } = applyFilter(query, input, {
-    allowed: ['status', 'age'],
-    searchable: ['name', 'email'],
-  })
-  return query.paginate(page, size)
+    const query = User.query()
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx, { input })
+
+    return query.paginate(page, size)
+  }
 }
 ```
 

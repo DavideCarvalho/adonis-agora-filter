@@ -13,8 +13,6 @@ A `defineFilter` spec already knows exactly which fields are filterable. **Codeg
 Because the Adonis filter declaration is a plain runtime `FilterSpec` (not decorator metadata), generation is a **pure function of the spec** — string in, string out, no AST walk, no reflection. The ace command is just the IO wrapper.
 </Callout>
 
----
-
 ## `generateFilterClient` — the pure core
 
 Takes a spec + a name, returns a TypeScript module as a string:
@@ -61,8 +59,6 @@ Options: `name` (base identifier), `fieldTypes`, `clientModule` (import specifie
 <Callout type="info">
 `filterableFieldPaths(spec)` and `sortableFieldPaths(spec)` are exported if you just want the enumerated field-path lists (e.g. to build your own artifact). A `'*'` allow-list can't be enumerated, so the emitter falls back to a permissive `string` field union.
 </Callout>
-
----
 
 ## `make:filter-client` — the ace command
 
@@ -126,8 +122,6 @@ Generated 1 filter client(s) into app/generated/filters.
 </Steps>
 
 Defaults: entrypoint `config/filter.js`, output `app/generated/filters`. The manifest may be a named `filters` export or the module's default export. `generateFilterClients(manifest)` (the pure expansion the command wraps) is exported too, if you'd rather write the files yourself.
-
----
 
 ## Using the generated client
 

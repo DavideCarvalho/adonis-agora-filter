@@ -11,8 +11,6 @@ Sometimes the thing you want to filter or sort by lives across a to-many relatio
 
 Under the hood each aggregate is a [computed field](/docs/filter/definitions/computed) whose SQL is a correlated subquery, auto-generated from your Lucid model's relation metadata. You don't write the subquery — you declare the relation and (for the column functions) which child columns are numeric, and the library synthesises the rest.
 
----
-
 ## The grammar
 
 An aggregate field is a single relation hop, a `$`-prefixed function, and — for the column functions — a child column:
@@ -30,8 +28,6 @@ So `posts.$count`, `posts.$sum.views`, `posts.$max.published_at` are all valid f
 <Callout type="info">
 The pure parser behind the grammar, `parseAggregatePath(path)`, is exported. It turns `'posts.$sum.views'` into `{ relation: 'posts', fn: 'sum', column: 'views' }` (and returns `null` for anything that isn't an aggregate path), if you need to inspect or route these yourself.
 </Callout>
-
----
 
 ## Unlocking aggregates — the `model` option
 
@@ -72,8 +68,6 @@ That single spec makes these fields filterable and sortable:
 <Callout type="warn" title="Why `aggregates` must be listed explicitly">
 Lucid does not reflect a column's SQL type, so the library can't know which child columns are numeric. Listing a column under `RelationSpec.aggregates` is how **you** assert it — it is the allow-list for the column functions. `$count` needs no column and is always synthesised for a to-many relation; `$sum`/`$avg`/`$min`/`$max` exist only for the columns you name.
 </Callout>
-
----
 
 ## What gets synthesised
 
@@ -117,8 +111,6 @@ The empty-collection semantics are chosen to be least-surprising: `$sum` coalesc
 <Callout type="info" title="It degrades gracefully — never throws at wiring time">
 Discovery is capability-gated and per-relation fault-tolerant: a model without introspection yields no aggregates, and a relation that isn't on the model, is to-one, or can't be booted (e.g. no DB adapter yet) is simply skipped. So adding `model` never breaks `defineFilter` — aggregates activate only when the metadata is actually there.
 </Callout>
-
----
 
 ## Full example — filter and sort by an aggregate
 

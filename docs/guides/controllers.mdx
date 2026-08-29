@@ -1,32 +1,28 @@
 ---
 title: Controllers
 icon: Route
-description: Wiring parse → apply into AdonisJS controllers and routes — reusable helpers, request sources, response shapes, and dynamic policies.
+description: Wiring a filter into AdonisJS controllers — the shape of a list endpoint, per-request policies, forced scopes a client cannot relax, strict mode and error handling, and response shapes.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-The whole server-side surface is two function calls: `parseFilterRequest(request.qs())` to reshape the request, then `applyFilter(query, input, config)` to apply it to a Lucid query and resolve pagination. This guide covers the common controller patterns.
+A filtered list endpoint is three lines: build the query, apply the filter, paginate. Everything in
+this guide is a variation on those three.
 
----
-
-## The basic endpoint
+## The shape of a list endpoint
 
 ```ts title="app/controllers/users_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+import { applyFilterFromRequest } from '@adonis-agora/filter'
+import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
 export default class UsersController {
-  async index({ request }: HttpContext) {
-    const input = parseFilterRequest(request.qs())
+  async index(ctx: HttpContext) {
     const query = User.query()
 
-    const { page, size } = applyFilter(query, input, {
-      allowed: ['name', 'email', 'age', 'status'],
-      searchable: ['name', 'email'],
-    })
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 
     return query.paginate(page, size)
   }
@@ -40,87 +36,62 @@ const UsersController = () => import('#controllers/users_controller')
 router.get('/users', [UsersController, 'index'])
 ```
 
----
+With the [provider](/docs/filter/guides/provider) registered, the same endpoint collapses into one
+chained call — `filterPaginate` applies the spec and runs the paginator, reading the ambient
+`HttpContext` for you:
 
-## Where input comes from
-
-`parseFilterRequest` takes any decoded object of query params, so you choose the source:
-
-<Tabs items={['Query string (GET)', 'Request body (POST)', 'A nested key']}>
-  <Tab value="Query string (GET)">
-```ts
-// GET /users?filter[status]=active&sort=-createdAt
-const input = parseFilterRequest(request.qs())
+```ts title="app/controllers/users_controller.ts"
+async index() {
+  return User.query().filterPaginate(userFilter)
+}
 ```
-  </Tab>
-  <Tab value="Request body (POST)">
-```ts
-// POST /users/search — the body may be the flat Spatie shape,
-// or the structured object the client builder's .build() returns:
-//   { filter: { where: [...] }, sort: [...], paginate: { page, size } }
-const input = parseFilterRequest(request.body())
-```
-  </Tab>
-  <Tab value="A nested key">
-```ts
-// Input wrapped under `request.input('query')`
-const input = parseFilterRequest(request.input('query', {}))
-```
-  </Tab>
-</Tabs>
 
-<Callout type="info">
-A `GET` endpoint pairs with the client builder's `.toQueryString()`; a `POST` search endpoint pairs with `.build()` (the structured `{ filter: { where }, sort, paginate }` body). `parseFilterRequest` reads both, so the same controller body serves either — see [the structured shape](/docs/filter/guides/operators#the-structured-post-shape) and the [Client Builder](/docs/filter/guides/client). `include` is the one key it does not act on: eager-loading stays your `preload` call.
-</Callout>
+Both forms do exactly the same work. Reach for the explicit one when the controller needs the
+builder between the two steps — which is most of the sections below.
 
----
+## Constraints the client cannot relax
 
-## A reusable list helper
+A scope you enforce goes **on the builder**, and its column stays **out** of the spec's
+`filterable`. Client filters are AND-combined with whatever is already there, so the two together
+give you a condition no query string can widen:
 
-Most list endpoints are identical apart from the model and the config. Factor the boilerplate into one helper:
+```ts title="app/controllers/users_controller.ts"
+async index(ctx: HttpContext) {
+  const query = User.query()
+    .where('tenantId', ctx.auth.user!.tenantId) // forced — `tenantId` is not filterable
+    .whereNull('deletedAt')
 
-```ts title="app/filters/list.ts"
-import type { HttpContext } from '@adonisjs/core/http'
-import { parseFilterRequest, applyFilter, type FilterConfig } from '@adonis-agora/filter'
-import type { QueryBuilderLike } from '@adonis-agora/filter'
+  const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 
-export function list(
-  ctx: HttpContext,
-  query: QueryBuilderLike & { paginate: (p: number, s: number) => Promise<unknown> },
-  config: FilterConfig,
-) {
-  const input = parseFilterRequest(ctx.request.qs())
-  const { page, size } = applyFilter(query, input, config)
   return query.paginate(page, size)
 }
 ```
 
-```ts title="app/controllers/users_controller.ts"
-import { list } from '#filters/list'
-import User from '#models/user'
+<Callout type="warn" title="Leaving the column out of the allow-list is half the recipe">
+Adding `.where('tenantId', …)` while `tenantId` is *also* filterable does not scope anything: the
+client's `?filter[tenantId]=999` is AND-combined with yours, so the request simply returns nothing —
+and the day someone widens it to an `OR` group, it returns everything. Force the scope, omit the
+column.
+</Callout>
 
-export default class UsersController {
-  index(ctx: HttpContext) {
-    return list(ctx, User.query(), {
-      allowed: ['name', 'email', 'status'],
-      searchable: ['name', 'email'],
-    })
-  }
-}
-```
-
----
+When the same scope belongs to every endpoint that uses the spec, declare it once as the spec's
+[`tenant` scope](/docs/filter/definitions#applyfilterfromrequest--the-one-call) instead of repeating
+it in each controller.
 
 ## Per-request policies
 
-Because `FilterConfig` is a plain object, you can compute it from the request — e.g. widen the allow-list for admins:
+A spec is a plain object, so nothing stops a controller from choosing between two of them — or from
+falling back to an inline `FilterConfig` for the one endpoint whose policy depends on who is asking:
 
-```ts
+```ts title="app/controllers/users_controller.ts"
+import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+
 async index({ request, auth }: HttpContext) {
   const input = parseFilterRequest(request.qs())
   const query = User.query()
 
   const isAdmin = auth.user?.role === 'admin'
+
   const { page, size } = applyFilter(query, input, {
     allowed: isAdmin
       ? ['name', 'email', 'status', 'internalNotes']
@@ -132,63 +103,135 @@ async index({ request, auth }: HttpContext) {
 }
 ```
 
-You can also pre-scope the query with constraints the client can't override — apply your own `where` before `applyFilter`, and it composes (AND) with the filtered conditions:
+Keep the *narrow* list as the default and widen it deliberately, never the other way around: a
+policy that starts open and subtracts is one refactor away from leaking a column.
 
+## Where the input comes from
+
+`applyFilterFromRequest` reads the query string. When the filter arrives some other way — a search
+endpoint with a body too big for a URL, a payload nested under one key — parse it yourself and pass
+the result in:
+
+<Tabs items={['Query string (GET)', 'Request body (POST)', 'A nested key']}>
+  <Tab value="Query string (GET)">
 ```ts
-const query = User.query().where('tenantId', auth.user!.tenantId) // forced, not filterable
-applyFilter(query, input, { allowed: ['name', 'status'] })
+// GET /users?filter[status]=active&sort=-createdAt
+const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 ```
+  </Tab>
+  <Tab value="Request body (POST)">
+```ts
+// POST /users/search — the body may be the flat Spatie shape, or the
+// structured object the client builder's .build() returns:
+//   { filter: { where: [...] }, sort: [...], paginate: { page, size } }
+const input = parseFilterRequest(request.body())
 
-<Callout type="warn">
-Forced constraints belong on the query **before** `applyFilter`, and the column should be left **out** of `allowed`. That way the tenant scope is always present and a client can never relax it through a filter.
+const { page, size } = applyFilterFromRequest(query, userFilter, ctx, { input })
+```
+  </Tab>
+  <Tab value="A nested key">
+```ts
+// Input wrapped under `request.input('query')`
+const input = parseFilterRequest(request.input('query', {}))
+
+const { page, size } = applyFilterFromRequest(query, userFilter, ctx, { input })
+```
+  </Tab>
+</Tabs>
+
+<Callout type="info">
+A `GET` endpoint pairs with the client builder's `.toQueryString()`; a `POST` search endpoint pairs
+with `.build()`. `parseFilterRequest` reads both shapes, so one controller body serves either — see
+[the structured shape](/docs/filter/guides/operators#the-structured-post-shape) and the
+[Client Builder](/docs/filter/guides/client). `include` is the one key nothing acts on:
+eager-loading stays your `preload` call.
 </Callout>
-
----
 
 ## Strict mode and error handling
 
-Pass `throwOnInvalid: true` to reject queries that reference disallowed fields instead of silently dropping them, and map the error to a `400`:
+By default a disallowed field is dropped and the request still returns rows. Set `throwOnInvalid` on
+the spec to reject those requests instead, and map the error to a `400`:
 
-```ts
+```ts title="app/controllers/users_controller.ts"
 import { InvalidColumnFilterError } from '@adonis-agora/filter'
 
-async index({ request, response }: HttpContext) {
-  const input = parseFilterRequest(request.qs())
+async index(ctx: HttpContext) {
   const query = User.query()
+
   try {
-    const { page, size } = applyFilter(query, input, {
-      allowed: ['name', 'status'],
-      throwOnInvalid: true,
-    })
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
     return query.paginate(page, size)
-  } catch (err) {
-    if (err instanceof InvalidColumnFilterError) {
-      return response.badRequest({ message: err.message })
+  } catch (error) {
+    if (error instanceof InvalidColumnFilterError) {
+      return ctx.response.badRequest({ message: error.message })
     }
-    throw err
+    throw error
   }
 }
 ```
 
-See [Validation](/docs/filter/guides/validation) for handling the error globally in `app/exceptions/handler.ts`.
-
----
+One `try`/`catch` per controller gets old fast. Handle it once in
+`app/exceptions/handler.ts` instead — [Validation](/docs/filter/guides/validation) shows that
+version, along with layering VineJS over parsed input.
 
 ## Response shapes
 
-`query.paginate(page, size)` returns Lucid's paginator, which serializes to `{ meta, data }`. You can return it directly, or reshape:
+`query.paginate(page, size)` returns Lucid's paginator, which serializes to `{ meta, data }`. Return
+it as-is, or reshape it:
 
 ```ts
 const result = await query.paginate(page, size)
+
 return {
   data: result.all(),
   meta: result.getMeta(),
 }
 ```
 
-For a non-paginated list (e.g. a small lookup), ignore the returned pagination and run the query directly — the filters, sort, and search are already applied:
+For a lookup endpoint that should not paginate, ignore the returned pagination and execute directly
+— the filters, search and sort are already on the builder:
 
-```ts
-const { /* page, size unused */ } = applyFilter(query, input, { allowed: ['name'] })
-return query.exec()
+```ts title="app/controllers/users_controller.ts"
+async options(ctx: HttpContext) {
+  const query = User.query().select('id', 'name')
+  applyFilterFromRequest(query, userFilter, ctx)
+
+  return query.limit(50)
+}
 ```
+
+## One helper for many resources
+
+List endpoints differ by model and spec, and by almost nothing else. When you have a dozen of them,
+one helper is worth more than a dozen identical methods:
+
+```ts title="app/filters/list.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilterFromRequest, type FilterSpec } from '@adonis-agora/filter'
+import type { QueryBuilderLike } from '@adonis-agora/filter'
+
+type Paginatable = QueryBuilderLike & {
+  paginate: (page: number, size: number) => Promise<unknown>
+}
+
+export function list(ctx: HttpContext, query: Paginatable, spec: FilterSpec) {
+  const { page, size } = applyFilterFromRequest(query, spec, ctx)
+  return query.paginate(page, size)
+}
+```
+
+```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { list } from '#filters/list'
+import { userFilter } from '#filters/user_filter'
+import User from '#models/user'
+
+export default class UsersController {
+  index(ctx: HttpContext) {
+    return list(ctx, User.query(), userFilter)
+  }
+}
+```
+
+Stop there. The moment the helper grows a second parameter for "except this endpoint also needs a
+join", it has become a worse version of the three lines it replaced.

@@ -12,18 +12,23 @@ import { Cards, Card } from 'fumadocs-ui/components/card';
 
 The wire format is the [Spatie](https://spatie.be/docs/laravel-query-builder) / JSON:API convention (`filter[field][op]=value`, `sort=-createdAt`, `page`/`size`), so the companion **`@adonis-agora/filter-client`** builder produces exactly what the server parses — fully type-safe, framework-agnostic, with optional TanStack Table state sync.
 
+One request, one call, one query — here is what `applyFilterFromRequest` does to a Lucid builder,
+clause by clause:
+
+<CodeFlow scene="filter-pipeline" />
+
 ## The problem it solves
 
-List endpoints accumulate filtering logic fast. Without a structure, every controller grows a tangle of `if (qs.name) { query.where(...) }` branches, ad-hoc operator handling, and string concatenation that invites injection bugs. `@adonis-agora/filter` replaces that with two pure functions and a policy object:
+List endpoints accumulate filtering logic fast. Without a structure, every controller grows a tangle of `if (qs.name) { query.where(...) }` branches, ad-hoc operator handling, and string concatenation that invites injection bugs. `@adonis-agora/filter` replaces that with one declaration and one call:
 
-- **Parse once, apply once.** `parseFilterRequest()` reshapes the request; `applyFilter()` validates it, prunes it against the allow-list, and mutates your Lucid query in place.
-- **The allow-list is the contract.** `allowed`, `sortable`, and `searchable` decide what is queryable. Anything else is dropped (or rejected with `throwOnInvalid`). No accidental exposure of internal columns.
+- **Declare once, apply everywhere.** A `defineFilter` spec is a plain object you keep next to your models; `applyFilterFromRequest()` reads the request through it and mutates your Lucid query in place. The two-function primitive underneath (`parseFilterRequest` + `applyFilter`) is still exported for one-off endpoints.
+- **The allow-list is the contract.** `filterable`, `sortable`, and `searchable` decide what is queryable. Anything else is dropped (or rejected with `throwOnInvalid`). No accidental exposure of internal columns.
 - **No hard Lucid import.** The adapter targets a structural `QueryBuilderLike` interface — any Lucid `ModelQueryBuilder` satisfies it, and the core stays unit-testable against a recording mock.
 - **Parameterized & escaped.** Values go through Lucid's parameter binding; LIKE patterns are escaped with `escapeLike()`. Field names are charset-validated before they ever reach SQL.
 
 ## Quickstart
 
-The whole loop — install, parse, apply, paginate — in three steps. For the full walkthrough see [Getting Started](/docs/filter/getting-started).
+The whole loop — install, declare, apply, query — in four steps. For the full walkthrough see [Getting Started](/docs/filter/getting-started).
 
 <Steps>
 <Step>
@@ -37,22 +42,37 @@ node ace add @adonis-agora/filter
 </Step>
 <Step>
 
-Parse the request and apply it to a Lucid query under an allow-list:
+Declare what the endpoint lets clients query. This is the whole security boundary — a column that is not on the list cannot be filtered, sorted or searched, whatever the query string says:
+
+```ts title="app/filters/user_filter.ts"
+import { defineFilter } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export const userFilter = defineFilter({
+  model: User,
+  filterable: ['name', 'email', 'age', 'status'],
+  searchable: ['name', 'email'],
+  sortable: ['name', 'createdAt'],
+  defaultSort: [{ field: 'createdAt', direction: 'desc' }],
+})
+```
+
+</Step>
+<Step>
+
+Apply it to a Lucid query in the controller. One call filters, searches, sorts, and resolves the pagination you hand to `paginate`:
 
 ```ts title="app/controllers/users_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+import { applyFilterFromRequest } from '@adonis-agora/filter'
+import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
 export default class UsersController {
-  async index({ request }: HttpContext) {
-    const input = parseFilterRequest(request.qs())
+  async index(ctx: HttpContext) {
     const query = User.query()
 
-    const { page, size } = applyFilter(query, input, {
-      allowed: ['name', 'email', 'age', 'status'],
-      searchable: ['name', 'email'],
-    })
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 
     return query.paginate(page, size)
   }
@@ -83,7 +103,7 @@ await fetch(`/users?${qs}`)
 </Steps>
 
 <Callout type="info" title="Pagination is returned, not applied">
-`applyFilter()` resolves and **returns** `{ page, size }` (clamped to your `maxSize`) rather than calling `paginate()` itself, so you stay in control of how the query executes — `query.paginate(page, size)`, a raw `.exec()`, or a `DISTINCT` projection. See [Lucid Integration](/docs/filter/guides/lucid).
+Applying a filter resolves and **returns** `{ page, size }` (clamped to your `maxSize`) rather than calling `paginate()` itself, so you stay in control of how the query executes — `query.paginate(page, size)`, a raw `.exec()`, or a `DISTINCT` projection. See [Lucid Integration](/docs/filter/guides/lucid).
 </Callout>
 
 ## More than a `WHERE` clause

@@ -15,8 +15,6 @@ This is the escape hatch for everything the flat column allow-list can't express
 The to-many aggregate feature (`posts.$count`, `posts.$sum.views`) is built on exactly this mechanism — those fields are auto-generated computed sources with correlated-subquery SQL. See [To-many Aggregates](/docs/filter/definitions/aggregates). Everything on this page (routing, allow-list bypass, parameter binding) applies identically to them.
 </Callout>
 
----
-
 ## The `computed` option
 
 Add a `computed` map to `defineFilter` — alias → its SQL source. Each declared alias becomes a first-class filter/sort target:
@@ -64,8 +62,6 @@ The dev expression is inlined; the client's `silva` and `5` are positional bindi
 Computed fields are a **separate namespace** from real columns. A declared alias bypasses the `filterable`/`sortable` column lists on purpose — its *declaration* is its allow-list. You do **not** add `fullName` to `filterable`; declaring it under `computed` is what authorizes it. Conversely, a field that is neither a declared computed alias nor in the column allow-list is dropped as usual.
 </Callout>
 
----
-
 ## The two source forms
 
 The value in the `computed` map is a `ComputedSource` — a `string` **or** a `(ctx: ComputedContext) => string` function.
@@ -112,8 +108,6 @@ With `table: 'users'`, `${alias}` expands to `users`, so `postCount` emits `(SEL
 The function form (and to-many aggregates) reference the outer row through `alias`, which comes from the spec's `table`. Set `table: 'users'` explicitly, or pass `model: User` — `defineFilter` reads the model's `table` name as the default. Without either, `alias` resolves to an empty string and the subquery SQL is malformed.
 </Callout>
 
----
-
 ## How a computed filter is routed
 
 The runner treats a computed alias as its own path, distinct from the column pipeline:
@@ -126,8 +120,6 @@ The runner treats a computed alias as its own path, distinct from the column pip
 Computed filtering is only recognized on **top-level leaf** filters — a computed alias nested inside an `AND`/`OR` group is treated as a normal column and will be dropped unless it is also a real column. Keep computed conditions at the top level.
 </Callout>
 
----
-
 ## Injection safety
 
 The safety contract is the same one real-column filters have, split cleanly in two:
@@ -136,8 +128,6 @@ The safety contract is the same one real-column filters have, split cleanly in t
 - The client's filter **value** always travels as a positional `?` binding — `whereRaw('(expr) = ?', [value])`. It is never interpolated.
 
 So even a `whereRaw`-based path stays injection-safe: dev SQL in, parameterized values through.
-
----
 
 ## Under the hood
 
@@ -183,8 +173,6 @@ import type {
   ComputedContext,  // { alias: string }
 } from '@adonis-agora/filter'
 ```
-
----
 
 ## Full example
 

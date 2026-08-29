@@ -21,8 +21,6 @@ interface ColumnFilter {
 
 The operator list is exported as `FILTER_OPERATORS` and the alias map as `OPERATOR_ALIASES` from `@adonis-agora/filter`.
 
----
-
 ## All 22 operators
 
 ### Comparison
@@ -84,8 +82,6 @@ The operator list is exported as `FILTER_OPERATORS` and the alias map as `OPERAT
 `exists`/`notExists` are aliases for `isNotNull`/`isNull` at the column level. `isEmpty`/`isNotEmpty` compare against the empty string `''` (they do **not** also check NULL).
 </Callout>
 
----
-
 ## SQL-symbol aliases
 
 The six scalar comparison operators accept their familiar SQL symbols. Aliases are normalized to the canonical operator during validation (and persisted in-place on the `ColumnFilter`), so the query builder never sees a symbol form.
@@ -119,8 +115,6 @@ normalizeOperator('iContains') // 'iContains' (canonical operators pass through)
 <Callout type="info">
 Only the scalar comparison operators have symbol aliases. Array, range, string, and unary operators (`in`, `between`, `contains`, `isNull`, …) have no symbol form — use the canonical name.
 </Callout>
-
----
 
 ## The wire format
 
@@ -166,7 +160,7 @@ Query-string values are always **strings** — `filter[age][gte]=18` parses `val
 ```
 
 A leading `-` on a sort entry means descending. `distinct` names the columns of a
-[`DISTINCT` projection](/docs/filter/guides/lucid#distinct-projections) that
+[`DISTINCT` projection](/docs/filter/guides/lucid#facet-endpoints-with-distinct) that
 `applyFilter` applies for you — allow-listed like any other field, and limited to
 root-table columns. Both `parseFilterRequest` and `parseSpatieRequest` read it.
 
@@ -189,8 +183,6 @@ An array of `{ field, operator }` records under `filter.where` (or at the top
 level, which is where OR/AND groups serialize to) is read as the condition list
 itself. A real column named `where` is unaffected — `filter[where]=lobby` is still
 an ordinary `equals` on `where`.
-
----
 
 ## AND / OR composition
 
@@ -234,8 +226,6 @@ A `ColumnFilter` can be a pure group — an empty `field` plus an `AND`/`OR` arr
 <Callout type="info">
 Nesting is capped at `MAX_FILTER_DEPTH` (10) to prevent stack-overflow from maliciously deep payloads. Exceeding it throws `InvalidColumnFilterError`. The constant is exported from `@adonis-agora/filter`.
 </Callout>
-
----
 
 ## Security
 

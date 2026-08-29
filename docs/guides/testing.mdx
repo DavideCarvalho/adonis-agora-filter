@@ -1,164 +1,155 @@
 ---
 title: Testing
 icon: FlaskConical
-description: Unit-testing filters against a recording mock query builder, asserting the generated calls, and end-to-end tests with Japa and a real database.
+description: Unit-testing a filter spec against the shipped recording mock, asserting the allow-list and the server scope, and end-to-end Japa tests against a real database.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-Because the adapter targets the structural `QueryBuilderLike` interface rather than Lucid directly, you can test your filter logic two ways: **fast unit tests** against a recording mock (no database), and **end-to-end tests** with Japa against a real database. Use both — the mock proves the right query was built, the integration test proves it returns the right rows.
+A filter is worth testing at two levels, and they prove different things. A **unit test** drives the
+spec against a recording query builder and asserts which clauses were produced — it runs in
+milliseconds and needs no database. A **functional test** hits the real endpoint with Japa's API
+client and asserts the rows that come back. The first proves you built the right query; the second
+proves the query is right.
 
----
+## Unit tests: the shipped recorder
 
-## Unit testing with a recording mock
-
-A `QueryBuilderLike` is a small interface — implement a stand-in that records every call, run `applyFilter` (or the low-level functions) against it, and assert the recorded calls. The library has no runtime Lucid dependency, so the mock is all you need.
-
-Every member of the interface is required, so `implements QueryBuilderLike` only compiles once the class covers all of them — including `whereHas`, `whereRaw`, `orderByRaw`, `distinct` and `limit`, which carry relation filtering, raw search/vector predicates and projections. The class below is complete; see [the contract](/docs/filter/guides/lucid#the-querybuilderlike-contract) for what each one drives.
+`@adonis-agora/filter/testing` ships a `MockQueryBuilder` that satisfies `QueryBuilderLike` and
+records every call. Because it is a real implementation of the contract, you can run your actual
+spec through `applyFilterFromRequest` against it:
 
 ```ts title="tests/unit/user_filter.spec.ts"
 import { test } from '@japa/runner'
-import { applyFilter, type QueryBuilderLike } from '@adonis-agora/filter'
+import { applyFilterFromRequest, defineFilter } from '@adonis-agora/filter'
+import { makeMockQueryBuilder } from '@adonis-agora/filter/testing'
+import { userFilter } from '#filters/user_filter'
+import User from '#models/user'
 
-interface Call { method: string; args: unknown[] }
-
-/** A recording stand-in for a Lucid query builder. */
-class MockQuery implements QueryBuilderLike {
-  calls: Call[] = []
-  children: MockQuery[] = []
-
-  private record(method: string, ...args: unknown[]): this {
-    this.calls.push({ method, args })
-    return this
-  }
-  private group(method: string, cb: (qb: QueryBuilderLike) => void): this {
-    const child = new MockQuery()
-    this.children.push(child)
-    cb(child)
-    return this
-  }
-
-  where(a: any, b?: any, c?: any): this {
-    if (typeof a === 'function') return this.group('where', a)
-    return c !== undefined ? this.record('where', a, b, c) : this.record('where', a, b)
-  }
-  orWhere(cb: (qb: QueryBuilderLike) => void) { return this.group('orWhere', cb) }
-  whereNot(c: string, v: unknown) { return this.record('whereNot', c, v) }
-  whereIn(c: string, v: unknown[]) { return this.record('whereIn', c, v) }
-  whereNotIn(c: string, v: unknown[]) { return this.record('whereNotIn', c, v) }
-  whereNull(c: string) { return this.record('whereNull', c) }
-  whereNotNull(c: string) { return this.record('whereNotNull', c) }
-  whereBetween(c: string, r: [unknown, unknown]) { return this.record('whereBetween', c, r) }
-  whereNotBetween(c: string, r: [unknown, unknown]) { return this.record('whereNotBetween', c, r) }
-  whereILike(c: string, v: string) { return this.record('whereILike', c, v) }
-  orWhereILike(c: string, v: string) { return this.record('orWhereILike', c, v) }
-  whereHas(r: any, cb: (qb: QueryBuilderLike) => void) { return this.group(`whereHas:${r}`, cb) }
-  whereRaw(sql: string, b?: readonly unknown[]) { return this.record('whereRaw', sql, b) }
-  orderBy(c: string, d: 'asc' | 'desc') { return this.record('orderBy', c, d) }
-  orderByRaw(sql: string, b?: readonly unknown[]) { return this.record('orderByRaw', sql, b) }
-  distinct(...c: string[]) { return this.record('distinct', ...c) }
-  limit(n: number) { return this.record('limit', n) }
-
-  /** Every call across this builder and its nested groups. */
-  flatten(): Call[] {
-    return [...this.calls, ...this.children.flatMap((c) => c.flatten())]
-  }
+/** Minimal stand-in for the parts of HttpContext a filter reads. */
+function ctxWith(qs: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return { request: { qs: () => qs }, ...extra }
 }
 
-test.group('UserFilter', () => {
-  test('applies a contains filter as ILIKE', ({ assert }) => {
-    const qb = new MockQuery()
-    applyFilter(
-      qb,
-      { filters: [{ field: 'name', operator: 'contains', value: 'Al' }] },
-      { allowed: ['name'] },
-    )
+test.group('userFilter', () => {
+  test('a contains filter becomes ILIKE with escaped wildcards', ({ assert }) => {
+    const qb = makeMockQueryBuilder()
+
+    applyFilterFromRequest(qb, userFilter, ctxWith({ filter: { name: { contains: 'Al' } } }))
+
     assert.deepInclude(qb.flatten(), { method: 'whereILike', args: ['name', '%Al%'] })
   })
 
-  test('applies gte as a comparison', ({ assert }) => {
-    const qb = new MockQuery()
-    applyFilter(
-      qb,
-      { filters: [{ field: 'age', operator: 'gte', value: 18 }] },
-      { allowed: ['age'] },
-    )
-    assert.deepInclude(qb.flatten(), { method: 'where', args: ['age', '>=', 18] })
+  test('sort direction comes from the leading dash', ({ assert }) => {
+    const qb = makeMockQueryBuilder()
+
+    applyFilterFromRequest(qb, userFilter, ctxWith({ sort: '-createdAt' }))
+
+    assert.deepEqual(qb.find('orderBy')?.args, ['createdAt', 'desc'])
   })
 })
 ```
 
+`flatten()` returns every leaf call across the builder and its nested groups, so an assertion does
+not have to know how deeply a clause was grouped. The [Testing Utilities](/docs/filter/testing) page
+covers `find()`, `findAll()`, relation subqueries and raw-SQL assertions.
+
 <Callout type="info">
-You don't have to hand-roll this recorder — the same `MockQueryBuilder` (and a `makeMockQueryBuilder()` factory) ships under the `@adonis-agora/filter/testing` subpath, with `flatten()` / `find()` / `findAll()` helpers and support for relation `whereHas` subqueries and raw search/vector SQL. See [Testing Utilities](/docs/filter/testing) — the hand-rolled class above is shown only to make the interface explicit.
+`QueryBuilderLike` is a small structural interface, so a hand-rolled recorder works too — see
+[the contract](/docs/filter/guides/lucid#anything-with-these-methods-is-a-query-builder) for every
+member it has to cover. Reach for it only when you need behaviour the shipped recorder does not
+have; otherwise import the one that already exists.
 </Callout>
 
----
+## Test the allow-list like a security boundary
 
-## Asserting allow-listing
+`filterable` is what stands between a query string and your columns, so assert it directly — both
+that a disallowed field never reaches the builder, and that strict mode rejects it loudly:
 
-The allow-list is the security boundary, so test it directly — a disallowed field must not reach the builder:
+```ts title="tests/unit/user_filter.spec.ts"
+test('a column outside filterable never reaches the builder', ({ assert }) => {
+  const qb = makeMockQueryBuilder()
 
-```ts
-test('drops disallowed fields', ({ assert }) => {
-  const qb = new MockQuery()
-  applyFilter(
+  applyFilterFromRequest(
     qb,
-    {
-      filters: [
-        { field: 'name', operator: 'equals', value: 'Al' },
-        { field: 'secret', operator: 'equals', value: 'x' },
-      ],
-    },
-    { allowed: ['name'] },
+    userFilter,
+    ctxWith({ filter: { name: 'Al', passwordHash: 'x' } }),
   )
-  const flat = qb.flatten()
-  assert.deepInclude(flat, { method: 'where', args: ['name', 'Al'] })
-  assert.isUndefined(flat.find((c) => c.args.includes('secret')))
+
+  const calls = qb.flatten()
+  assert.deepInclude(calls, { method: 'where', args: ['name', 'Al'] })
+  assert.isUndefined(calls.find((call) => call.args.includes('passwordHash')))
 })
 
-test('throws when strict and a field is disallowed', ({ assert }) => {
-  const qb = new MockQuery()
+test('strict mode throws instead of dropping', ({ assert }) => {
+  const strict = defineFilter({ model: User, filterable: ['name'], throwOnInvalid: true })
+
   assert.throws(() =>
-    applyFilter(
-      qb,
-      { filters: [{ field: 'secret', operator: 'equals', value: 'x' }] },
-      { allowed: ['name'], throwOnInvalid: true },
+    applyFilterFromRequest(
+      makeMockQueryBuilder(),
+      strict,
+      ctxWith({ filter: { passwordHash: 'x' } }),
     ),
   )
 })
 ```
 
----
+The same test is worth writing for the server scope, which runs **before** the allow-list and cannot
+be relaxed by the request:
 
-## Asserting pagination resolution
+```ts title="tests/unit/user_filter.spec.ts"
+const scoped = defineFilter({
+  model: User,
+  filterable: ['name'],
+  tenant: { column: 'tenantId', resolve: (ctx) => ctx.auth?.user?.tenantId },
+})
 
-`applyFilter` returns the resolved pagination — assert the clamping:
+test('the client cannot override the tenant scope', ({ assert }) => {
+  const qb = makeMockQueryBuilder()
 
-```ts
-test('clamps size to maxSize and floors page to 1', ({ assert }) => {
-  const qb = new MockQuery()
-  assert.deepEqual(applyFilter(qb, {}, { allowed: '*' }), { page: 1, size: 25 })
+  applyFilterFromRequest(
+    qb,
+    scoped,
+    ctxWith({ filter: { tenantId: 999 } }, { auth: { user: { tenantId: 42 } } }),
+  )
+
+  const calls = qb.flatten()
+  assert.deepInclude(calls, { method: 'where', args: ['tenantId', 42] })
+  assert.isUndefined(calls.find((call) => call.args.includes(999)))
+})
+```
+
+## Pagination is a return value, so assert it
+
+`applyFilterFromRequest` returns the resolved `{ page, size }` — clamping is part of the contract:
+
+```ts title="tests/unit/user_filter.spec.ts"
+test('size is clamped to maxSize and page floors at 1', ({ assert }) => {
+  const qb = makeMockQueryBuilder()
+
+  assert.deepEqual(applyFilterFromRequest(qb, userFilter, ctxWith({})), { page: 1, size: 25 })
+
   assert.deepEqual(
-    applyFilter(qb, { page: 3, size: 500 }, { allowed: '*', maxSize: 100 }),
+    applyFilterFromRequest(qb, userFilter, ctxWith({ page: '3', size: '500' })),
     { page: 3, size: 100 },
   )
 })
 ```
 
----
+## The parse step on its own
 
-## Testing the wire format (parse step)
+`parseFilterRequest` is pure — feed it a decoded query object and assert the structured output. This
+is the test to write when you are debugging a wire-format question rather than a SQL one:
 
-`parseFilterRequest` is pure — feed it a decoded query object and assert the structured output:
-
-```ts
+```ts title="tests/unit/parse_request.spec.ts"
+import { test } from '@japa/runner'
 import { parseFilterRequest } from '@adonis-agora/filter'
 
-test('parses bracket-notation operators and sort', ({ assert }) => {
+test('parses bracket-notation operators and a sort list', ({ assert }) => {
   const input = parseFilterRequest({
     filter: { age: { gte: '18' }, status: 'active' },
     sort: '-createdAt,name',
   })
+
   assert.deepEqual(input.filters, [
     { field: 'age', operator: 'gte', value: '18' },
     { field: 'status', operator: 'equals', value: 'active' },
@@ -170,18 +161,21 @@ test('parses bracket-notation operators and sort', ({ assert }) => {
 })
 ```
 
----
+## Functional tests against a real database
 
-## End-to-end tests with a real database
-
-The mock proves the calls; an integration test proves the SQL is correct and returns the right rows. With Japa's API client and a seeded database, hit the endpoint with a client-built query string and assert the result:
+The mock proves the calls; the functional test proves the SQL. Build the query string with the
+client package so the test also round-trips the wire format — if the client and the server ever
+disagree on encoding, this test is where it surfaces:
 
 ```ts title="tests/functional/users.spec.ts"
 import { test } from '@japa/runner'
 import { filterQuery } from '@adonis-agora/filter-client'
+import testUtils from '@adonisjs/core/services/test_utils'
 import User from '#models/user'
 
 test.group('GET /users', (group) => {
+  group.each.setup(() => testUtils.db().withGlobalTransaction())
+
   group.each.setup(async () => {
     await User.createMany([
       { name: 'Alice', status: 'active', age: 30 },
@@ -195,29 +189,24 @@ test.group('GET /users', (group) => {
     const response = await client.get(`/users?${qs}`)
 
     response.assertStatus(200)
-    const body = response.body()
-    assert.lengthOf(body.data, 1)
-    assert.equal(body.data[0].name, 'Alice')
+    assert.lengthOf(response.body().data, 1)
+    assert.equal(response.body().data[0].name, 'Alice')
   })
 
-  test('rejects a disallowed field in strict mode', async ({ client }) => {
+  test('a disallowed field is a 400 in strict mode', async ({ client }) => {
     const response = await client.get('/users?filter[passwordHash]=x')
+
     response.assertStatus(400)
   })
 })
 ```
 
-<Callout type="info">
-Building the query string with `@adonis-agora/filter-client` in your tests doubles as a round-trip check: it verifies the client and server agree on the wire format end-to-end. See [Client Builder](/docs/filter/guides/client).
-</Callout>
-
----
-
 ## Testing the client builder
 
-The client builder is pure and synchronous — assert its terminators directly:
+The builder is pure and synchronous, so its terminators can be asserted without a server:
 
-```ts
+```ts title="tests/unit/filter_query.spec.ts"
+import { test } from '@japa/runner'
 import { filterQuery } from '@adonis-agora/filter-client'
 
 test('builds the expected query string', ({ assert }) => {
@@ -226,19 +215,20 @@ test('builds the expected query string', ({ assert }) => {
     .gte('age', 18)
     .sortDesc('createdAt')
     .toQueryString()
+
   assert.equal(qs, 'filter%5Bname%5D[contains]=Al&filter%5Bage%5D[gte]=18&sort=-createdAt')
 })
 
-test('where replaces, add accumulates', ({ assert }) => {
+test('where replaces a field, add accumulates on it', ({ assert }) => {
   const result = filterQuery()
     .add('createdAt', 'gte', '2026-01-01')
     .add('createdAt', 'lte', '2026-12-31')
     .build()
+
   assert.lengthOf(result.filter.where, 2)
 })
 
-test('rejects an invalid operator value', ({ assert }) => {
-  // `in` requires an array — a scalar throws synchronously at call time
+test('an operator that requires an array rejects a scalar', ({ assert }) => {
   assert.throws(() => filterQuery().where('status', 'in', 'active' as any))
 })
 ```

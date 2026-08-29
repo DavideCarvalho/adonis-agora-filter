@@ -1,31 +1,43 @@
 ---
-title: Filter Classes
+title: Filter Config
 icon: ShieldCheck
-description: The FilterConfig policy — allow-listing filterable, sortable, and searchable columns, default and max page size, and strict vs. lenient rejection.
+description: The FilterConfig policy object — allow-listing filterable, sortable and searchable columns, bounding page size, and choosing between dropping and rejecting a disallowed field.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
 `@adonis-agora/filter` has no filter *classes* — there are no decorators and no base class to extend. The declarative surface is a single plain object, the **`FilterConfig`**, passed as the third argument to `applyFilter`. It is the policy for one endpoint: which columns are filterable, sortable, and searchable, and how pagination is bounded.
 
-```ts
-import { applyFilter } from '@adonis-agora/filter'
+```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+import User from '#models/user'
 
-const { page, size } = applyFilter(query, input, {
-  allowed: ['name', 'email', 'age', 'status'],
-  sortable: ['name', 'createdAt'],
-  searchable: ['name', 'email'],
-  defaultSize: 25,
-  maxSize: 100,
-  throwOnInvalid: false,
-})
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const input = parseFilterRequest(request.qs())
+    const query = User.query()
+
+    const { page, size } = applyFilter(query, input, {
+      allowed: ['name', 'email', 'age', 'status'],
+      sortable: ['name', 'createdAt'],
+      searchable: ['name', 'email'],
+      defaultSize: 25,
+      maxSize: 100,
+      throwOnInvalid: false,
+    })
+
+    return query.paginate(page, size)
+  }
+}
 ```
 
 <Callout type="info">
-Because the policy is just an object, you can store it next to the model, share it across controllers, or compute it per request (e.g. widen the allow-list for admins). See [Controllers](/docs/filter/guides/controllers) for patterns.
+Because the policy is just an object, you can compute it per request — widen the allow-list for an
+admin, narrow it for a public endpoint. See [Controllers](/docs/filter/guides/controllers) for those
+patterns, and [Defining Filters](/docs/filter/definitions) for the reusable `defineFilter` spec that
+wraps this same object.
 </Callout>
-
----
 
 ## FilterConfig reference
 
@@ -69,8 +81,6 @@ applyFilter(query, input, {
 
 It receives the **already alias-resolved** target, never the client-facing alias key, so a predicate is written against your real column names.
 
----
-
 ## The allow-list is the security boundary
 
 `allowed`, `sortable`, and `searchable` are not conveniences — they are the only thing standing between a client query string and your columns. Any field a client references that is not in the relevant list is pruned out of the query before it reaches Lucid.
@@ -90,8 +100,6 @@ The pruning is **recursive**. For an AND/OR group, each leaf is checked independ
 `allowed: '*'` disables the filter allow-list. Only use it for trusted, internal endpoints — or pair it with a `searchable`/`sortable` list and rely on your model's column set being safe. Prefer an explicit array everywhere a client can reach.
 </Callout>
 
----
-
 ## sortable defaults to allowed
 
 If you omit `sortable`, it falls back to `allowed` — the same columns are filterable and sortable. Set it explicitly to diverge:
@@ -104,8 +112,6 @@ applyFilter(query, input, {
 ```
 
 A sort on a non-sortable field is dropped (or rejected with `throwOnInvalid`), exactly like filters.
-
----
 
 ## searchable enables free-text search
 
@@ -120,8 +126,6 @@ applyFilter(query, input, {
 ```
 
 The term is escaped with `escapeLike()` before the pattern is built. An empty or whitespace-only term is ignored. If `searchable` is omitted, `search` in the input is silently skipped.
-
----
 
 ## Pagination bounds
 
@@ -148,8 +152,6 @@ const result = await query.paginate(page, size)
 `applyFilter` resolves `page` with a floor of `1`, matching Lucid's `query.paginate(page, perPage)` which is 1-based. The [client builder](/docs/filter/guides/client)'s `.page(page, size)` is 0-based (TanStack convention) — normalize at the boundary if you pass client page numbers straight through.
 </Callout>
 
----
-
 ## throwOnInvalid — strict mode
 
 By default, disallowed fields are dropped silently, so an over-broad query still returns results (just an unfiltered or partially-filtered set). Set `throwOnInvalid: true` to make the endpoint reject such requests instead:
@@ -165,32 +167,27 @@ try {
 
 This throws `InvalidColumnFilterError` (exported from `@adonis-agora/filter`) the moment a disallowed filter or sort field is encountered. See [Validation](/docs/filter/guides/validation) for turning that into a clean HTTP response.
 
----
+## When to graduate to a spec
 
-## Reusing a config
-
-Keep the policy beside the model so every controller that lists it shares one source of truth:
+A `FilterConfig` written inline is the right amount of machinery for one endpoint. The moment the
+same policy appears in a second controller, move it into a
+[`defineFilter` spec](/docs/filter/definitions) instead of exporting the raw object:
 
 ```ts title="app/filters/user_filter.ts"
-import type { FilterConfig } from '@adonis-agora/filter'
+import { defineFilter } from '@adonis-agora/filter'
+import User from '#models/user'
 
-export const userFilterConfig: FilterConfig = {
-  allowed: ['name', 'email', 'age', 'status'],
+export const userFilter = defineFilter({
+  model: User,
+  filterable: ['name', 'email', 'age', 'status'],
   sortable: ['name', 'createdAt'],
   searchable: ['name', 'email'],
   maxSize: 100,
-}
+})
 ```
 
-```ts title="app/controllers/users_controller.ts"
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
-import { userFilterConfig } from '#filters/user_filter'
-import User from '#models/user'
-
-async index({ request }: HttpContext) {
-  const input = parseFilterRequest(request.qs())
-  const query = User.query()
-  const { page, size } = applyFilter(query, input, userFilterConfig)
-  return query.paginate(page, size)
-}
-```
+The spec is the same policy plus the things a plain object cannot express: a relation whitelist with
+a depth cap, a tenant scope resolved per request, server-side default filters, and a declaration the
+[client codegen](/docs/filter/codegen) can read. `specToFilterConfig(spec)` projects it back down to
+the `FilterConfig` documented above, which is exactly what the runner consumes — the two are the
+same policy at two levels of convenience, not two competing APIs.
