@@ -31,7 +31,7 @@ On `boot()` the provider imports Lucid's `ModelQueryBuilder` and calls `register
 
 ## The macros
 
-### `applyFilterFromRequest(spec, ctx?, options?)`
+### `applyFilterFromRequest(filter, ctx?, options?)`
 
 Applies a [`FilterSpec`](/docs/filter/definitions)'s server scope (tenant + default filters) and the allow-listed filter/sort/search from the request, then **returns the query** so it chains. The resolved pagination is dropped here — use `filterPaginate` (or the free function) when you need it.
 
@@ -51,7 +51,7 @@ export default class UsersController {
 }
 ```
 
-### `filterPaginate(spec, ctx?, options?)`
+### `filterPaginate(filter?, ctx?, options?)`
 
 Applies the same, then calls `paginate(page, size)` with the resolved pagination — filter + paginate in one terminal call, returning Lucid's paginator:
 
@@ -69,6 +69,39 @@ That single line is the terse equivalent of:
 const query = User.query()
 const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 return query.paginate(page, size)
+```
+
+## Both macros take a filter class
+
+A [filter class](/docs/filter/guides/filter-classes) is resolved through the IoC container, so that
+leg is async — and `applyFilterFromRequest` then resolves to the **pagination** rather than to the
+builder (a Lucid builder is thenable: a promise resolving to one would execute the query instead of
+handing it back). The builder is the one you called it on:
+
+```ts title="app/controllers/users_controller.ts"
+const query = User.query().whereNull('deletedAt')
+
+const { page, size } = await query.applyFilterFromRequest(UserFilter)
+
+return query.preload('team').paginate(page, size)
+```
+
+```ts title="app/controllers/users_controller.ts"
+// filter + paginate in one await
+return User.query().filterPaginate(UserFilter, ctx)
+```
+
+### `filterPaginate()` — no arguments
+
+A query that has already been through a filter remembers the page and size that call resolved, so
+you can compose in between and still page it the way the request asked:
+
+```ts title="app/controllers/users_controller.ts"
+const { query } = await User.filter(ctx)     // the model mixin, or the macro above
+
+query.preload('team').withCount('posts')
+
+return query.filterPaginate()
 ```
 
 ## The optional `ctx` argument
@@ -107,5 +140,7 @@ It is idempotent enough to call once at boot; calling twice re-defines the macro
 | Inline chaining in a `Model.query()` builder | the `applyFilterFromRequest` macro (register the provider) |
 | Filter + paginate in one call | the `filterPaginate` macro |
 | Full control over pagination execution | the free `applyFilterFromRequest` (returns `{ page, size }`) |
+| The whole endpoint from the model | the [`Filterable` mixin](/docs/filter/guides/filter-classes) — `User.filterPaginate(ctx)` |
+| The builder back, then page it | `const { query } = await User.filter(ctx)` → `query.filterPaginate()` |
 
 They are interchangeable — the macros are thin wrappers over the same free function, so pick per call site.

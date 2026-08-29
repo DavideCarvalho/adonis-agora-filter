@@ -67,6 +67,16 @@ export type {
   ApplyFromRequestOptions,
   FilterRequestContext,
 } from './apply_from_request.js';
+export { BaseModelFilter } from './base_model_filter.js';
+export {
+  dispatchKeys,
+  isFilterClass,
+  methodForKey,
+  specFromFilterClass,
+} from './filter_class.js';
+export type { FilterClass } from './filter_class.js';
+export { Filterable } from './filterable_mixin.js';
+export type { FilterableModelStatics } from './filterable_mixin.js';
 export { registerFilterMacros } from './lucid_macros.js';
 export type { MacroableQueryBuilder } from './lucid_macros.js';
 export { parseDistinct, parseFilterRequest, parseSort, toColumnFilters } from './parse_request.js';

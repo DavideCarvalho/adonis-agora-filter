@@ -1,6 +1,7 @@
 import { HttpContext } from '@adonisjs/core/http';
 import { describe, expect, it, vi } from 'vitest';
 import type { FilterRequestContext } from '../src/apply_from_request.js';
+import { BaseModelFilter } from '../src/base_model_filter.js';
 import { defineFilter } from '../src/filter_spec.js';
 import { registerFilterMacros } from '../src/lucid_macros.js';
 import type { FilterInput } from '../src/types.js';
@@ -79,5 +80,73 @@ describe('registerFilterMacros', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+/**
+ * The class form of the macros. A filter class is resolved through the container, so both macros
+ * go async on this leg — `applyFilterFromRequest` still resolves to the same builder, and
+ * `filterPaginate()` with no argument pages a query a previous call already filtered.
+ */
+class MacroUserFilter extends BaseModelFilter {
+  static filterable = ['name'];
+  static defaultSize = 25;
+
+  setup() {
+    this.$query.whereNull('deletedAt');
+  }
+
+  fullName(value: unknown) {
+    this.$query.whereILike('full_name', `%${String(value)}%`);
+  }
+}
+
+type ClassFilterableQuery = FakeModelQueryBuilder & {
+  applyFilterFromRequest(filter: unknown, ctx?: unknown, options?: unknown): Promise<unknown>;
+  filterPaginate(filter?: unknown, ctx?: unknown, options?: unknown): Promise<unknown> | unknown;
+};
+
+describe('registerFilterMacros — filter classes', () => {
+  const ctx = { request: { qs: () => ({ filter: { name: 'Al', fullName: 'silva' }, page: '2' }) } };
+
+  it('applyFilterFromRequest resolves to the pagination — never to the (thenable) builder', async () => {
+    const query = new FakeModelQueryBuilder() as ClassFilterableQuery;
+
+    const returned = await query.applyFilterFromRequest(MacroUserFilter, ctx);
+
+    // A Lucid builder is thenable: a promise resolving to one would execute the query instead of
+    // handing it back, so the class leg resolves to `{ page, size }` and leaves the builder alone.
+    expect(returned).toEqual({ page: 2, size: 25 });
+    const flat = query.flatten();
+    expect(flat).toContainEqual({ method: 'whereNull', args: ['deletedAt'] });
+    expect(flat).toContainEqual({ method: 'where', args: ['name', 'Al'] });
+    expect(flat).toContainEqual({ method: 'whereILike', args: ['full_name', '%silva%'] });
+  });
+
+  it('filterPaginate() with no argument pages what the previous call resolved', async () => {
+    const query = new FakeModelQueryBuilder() as ClassFilterableQuery;
+
+    await query.applyFilterFromRequest(MacroUserFilter, ctx);
+    // the endpoint keeps composing on the builder it got back
+    query.where('confirmed', true);
+    await query.filterPaginate();
+
+    expect(query.paginateArgs).toEqual([2, 25]);
+    expect(query.flatten()).toContainEqual({ method: 'where', args: ['confirmed', true] });
+  });
+
+  it('filterPaginate() refuses to guess on a query nothing has filtered', () => {
+    const query = new FakeModelQueryBuilder() as ClassFilterableQuery;
+
+    expect(() => query.filterPaginate()).toThrow(/has not been filtered/);
+  });
+
+  it('filterPaginate(FilterClass) filters and pages in one call', async () => {
+    const query = new FakeModelQueryBuilder() as ClassFilterableQuery;
+
+    await query.filterPaginate(MacroUserFilter, ctx);
+
+    expect(query.paginateArgs).toEqual([2, 25]);
+    expect(query.flatten()).toContainEqual({ method: 'where', args: ['name', 'Al'] });
   });
 });

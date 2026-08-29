@@ -15,8 +15,9 @@ import { Steps, Step } from 'fumadocs-ui/components/steps';
 | [`@adonis-agora/filter`](/docs/filter/guides/lucid) | server (AdonisJS) | read a request through a declared policy → apply it to a Lucid query → resolve pagination |
 | [`@adonis-agora/filter-client`](/docs/filter/guides/client) | browser / Node | a fluent, type-safe builder that emits exactly the query string the server parses |
 
-There is no config file and no decorator. A filter is a plain object you export from a module, and
-applying it is one call in a controller.
+There is no config file and no decorator. A filter is a **class** in `app/filters/` — a method per
+request key that needs SQL of its own, plain columns declared as statics — and applying it is one
+call in a controller.
 
 ## Prerequisites
 
@@ -61,34 +62,54 @@ and the commands barrel that makes [`make:filter-client`](/docs/filter/codegen) 
 installed with `npm`/`pnpm`, you can add either by hand later.
 </Callout>
 
-## Declare the filter
+## Write the filter
 
-Filters live next to the model they query. Create `app/filters/` and export one `defineFilter` spec
-per resource — the lists in it are the security boundary, so read them as *the query vocabulary this
-endpoint publishes*:
+`node ace make:filter user` creates `app/filters/user_filter.ts`. The statics are the security
+boundary — read them as *the query vocabulary this endpoint publishes* — and a method is how a key
+that has no column behind it gets its SQL:
 
 ```ts title="app/filters/user_filter.ts"
-import { defineFilter } from '@adonis-agora/filter'
+import { BaseModelFilter } from '@adonis-agora/filter'
+import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
 import User from '#models/user'
 
-export const userFilter = defineFilter({
-  model: User,
+export default class UserFilter extends BaseModelFilter {
+  declare $query: ModelQueryBuilderContract<typeof User>
 
-  filterable: ['name', 'email', 'age', 'status'], // columns clients may filter on
-  sortable: ['name', 'createdAt'],                // defaults to `filterable`
-  searchable: ['name', 'email'],                  // columns the free-text `search` term scans
+  static model = User
 
-  defaultSort: [{ field: 'createdAt', direction: 'desc' }],
-  defaultSize: 25,
-  maxSize: 100,
-})
+  static filterable = ['name', 'email', 'age', 'status'] // columns clients may filter on
+  static sortable = ['name', 'createdAt']                // defaults to `filterable`
+  static searchable = ['name', 'email']                  // columns the `search` term scans
+
+  static defaultSort = [{ field: 'createdAt', direction: 'desc' as const }]
+  static defaultSize = 25
+  static maxSize = 100
+
+  /** Runs on every call, before anything the request asked for. */
+  setup() {
+    this.$query.whereNull('deletedAt')
+  }
+
+  /** `?filter[fullName]=silva` — writing the method is what exposes the key. */
+  fullName(value: string) {
+    this.$query.whereRaw("first_name || ' ' || last_name ilike ?", [`%${value}%`])
+  }
+}
 ```
 
-A column that is not on a list cannot be filtered, sorted or searched, whatever the query string
-says — it is dropped, or rejected with a `400` when the spec sets
-[`throwOnInvalid`](/docs/filter/guides/validation#throwoninvalid--allow-list-rejection). Everything
-else the spec can declare — relations, tenant scoping, computed fields, aliases, value coercion —
-is in [Defining Filters](/docs/filter/definitions).
+A column that is not on a list and has no method cannot be filtered, sorted or searched, whatever
+the query string says — it is dropped, or rejected with a `400` when the class sets
+[`throwOnInvalid`](/docs/filter/guides/validation#throwoninvalid--allow-list-rejection). The rest of
+what a filter can declare — relations, tenant scoping, computed fields, aliases, value coercion —
+is in [Defining Filters](/docs/filter/definitions), and the class form itself is covered in
+[Filter Classes](/docs/filter/guides/filter-classes).
+
+<Callout type="info" title="A filter can use your services">
+The class is constructed by the IoC container, so `@inject()` on the constructor works exactly as
+it does in a controller — a filter that needs a tenant resolver, a policy service or a cache just
+asks for it.
+</Callout>
 
 <Callout title="The #filters subpath">
 `#filters/user_filter` is an AdonisJS subpath import, not something this library invents. Add it
@@ -101,25 +122,47 @@ once to your `package.json`, alongside the ones the starter kit ships:
 ```
 </Callout>
 
+## Point the model at it
+
+```ts title="app/models/user.ts"
+import { compose } from '@adonisjs/core/helpers'
+import { BaseModel } from '@adonisjs/lucid/orm'
+import { Filterable } from '@adonis-agora/filter'
+import UserFilter from '#filters/user_filter'
+
+export default class User extends compose(BaseModel, Filterable) {
+  static $filter = () => UserFilter
+
+  // columns…
+}
+```
+
 ## Apply it in a controller
 
-One call reads the request through the spec, applies the surviving filters, search and sort to the
-Lucid query, and returns the pagination you hand to `paginate`:
+One call reads the request through the filter, applies the surviving filters, search and sort to the
+Lucid query, and pages it the way the request asked:
 
 ```ts title="app/controllers/users_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { applyFilterFromRequest } from '@adonis-agora/filter'
-import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
 export default class UsersController {
   async index(ctx: HttpContext) {
-    const query = User.query()
-
-    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
-
-    return query.paginate(page, size)
+    return User.filterPaginate(ctx)
   }
+}
+```
+
+When the endpoint needs more than that, take the builder instead — it comes back filtered, sorted
+and searched, with nothing executed yet:
+
+```ts title="app/controllers/users_controller.ts"
+async index(ctx: HttpContext) {
+  const { query } = await User.filter(ctx)
+
+  query.whereNotNull('confirmedAt').preload('team').withCount('posts')
+
+  return query.filterPaginate() // the page the request asked for, already clamped
 }
 ```
 
@@ -132,11 +175,11 @@ router.get('/users', [UsersController, 'index'])
 
 That is the whole endpoint. It is also the whole library, for most applications.
 
-<Callout type="info" title="Pagination is returned, not applied">
-`size` is resolved and clamped to `[1, maxSize]`, `page` floored at `1` — but nothing executes. That
-leaves the builder's terminal operations to you: `query.paginate(page, size)`, a plain
-`query.exec()`, or a `DISTINCT` projection off the same filtered query. See
-[Lucid Integration](/docs/filter/guides/lucid).
+<Callout type="info" title="Nothing executes until you say so">
+`size` is resolved and clamped to `[1, maxSize]` and `page` floored at `1`, but the query is only
+ever mutated. That leaves the terminal operation to you — `filterPaginate()`, an explicit
+`paginate(page, size)`, a plain `exec()`, or a `DISTINCT` projection off the same filtered query.
+See [Lucid Integration](/docs/filter/guides/lucid).
 </Callout>
 
 ## What a request actually does
@@ -147,13 +190,14 @@ Take one:
 GET /users?filter[status]=active&filter[age][gte]=18&search=fleet&sort=-createdAt&page=1&size=25
 ```
 
-Against the spec above, it:
+Against the filter above, it:
 
 1. **Reads** `ctx.request.qs()` into `{ filters: [...], search: 'fleet', sort: [...], page: 1, size: 25 }`
 2. **Resolves aliases**, then **validates** each filter — operator known, value shape correct, field charset safe, depth ≤ 10
 3. **Prunes** anything outside the allow-list — `status` and `age` survive; `filter[passwordHash]` never becomes SQL
 4. **Applies** the survivors as `WHERE` / `ILIKE` / `ORDER BY` clauses, with every client value bound as a parameter
-5. **Returns** `{ page: 1, size: 25 }` for `query.paginate()`
+5. **Dispatches** any key the class owns a method for to that method — the declarative path never sees it
+6. **Resolves** `{ page: 1, size: 25 }`, which `filterPaginate()` (or your own `paginate`) then runs
 
 The query string it understands is the [Spatie](https://spatie.be/docs/laravel-query-builder) /
 JSON:API convention, which is also exactly what the client builder emits:
@@ -226,14 +270,17 @@ const input = parseFilterRequest(request.body())          // a POST /users/searc
 const input = parseFilterRequest(request.input('query', {})) // input nested under one key
 ```
 
-The moment the same policy shows up in a second endpoint, move it into a spec — the spec is also
-what the codegen and the tenant scope read.
+The moment the same policy shows up in a second endpoint, move it into a filter class (or a
+`defineFilter` spec) — that is also what the codegen and the tenant scope read.
 
 ## Next steps
 
 <Steps>
 <Step>
-[**Defining Filters**](/docs/filter/definitions) — the full spec: relations, tenant scope, computed fields, aliases, and value coercion.
+[**Filter Classes**](/docs/filter/guides/filter-classes) — methods, `setup()`, injected services, and every way to apply one.
+</Step>
+<Step>
+[**Defining Filters**](/docs/filter/definitions) — the full declaration: relations, tenant scope, computed fields, aliases, and value coercion.
 </Step>
 <Step>
 [**Operators**](/docs/filter/guides/operators) — all 22 operators, SQL-symbol aliases, and the wire format.

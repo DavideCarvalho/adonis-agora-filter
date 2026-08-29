@@ -1,0 +1,45 @@
+{{#var filterName = string(entity.name).pascalCase().removeSuffix('Filter').toString() + 'Filter'}}
+{{#var modelName = string(entity.name).pascalCase().removeSuffix('Filter').toString()}}
+{{#var filterFileName = string(entity.name).snakeCase().removeSuffix('filter').toString() + '_filter'}}
+{{#var modelFileName = string(entity.name).snakeCase().removeSuffix('filter').toString()}}
+{{{
+  exports({
+    to: app.makePath('app/filters', entity.path, filterFileName + '.ts')
+  })
+}}}
+import { BaseModelFilter } from '@adonis-agora/filter'
+import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model'
+import {{ modelName }} from '#models/{{ modelFileName }}'
+
+export default class {{ filterName }} extends BaseModelFilter {
+  declare $query: ModelQueryBuilderContract<typeof {{ modelName }}>
+
+  static model = {{ modelName }}
+
+  /** Columns clients may filter on with the standard operators — these need no method. */
+  static filterable = ['name']
+  /** Columns clients may sort on. Defaults to `filterable`. */
+  static sortable = ['createdAt']
+  /** Columns the free-text `search` term scans. */
+  static searchable = ['name']
+
+  static defaultSort = [{ field: 'createdAt', direction: 'desc' as const }]
+  static defaultSize = 25
+  static maxSize = 100
+
+  /**
+   * Runs on every call, before anything the request asked for — the place for a scope the client
+   * cannot relax (a tenant, a soft-delete guard, an ownership check).
+   */
+  setup() {
+    // this.$query.whereNull('deletedAt')
+  }
+
+  /**
+   * One method per request key that needs SQL of its own. `?filter[fullName]=silva` lands here;
+   * writing the method IS what exposes the key, so it needs no allow-list entry.
+   */
+  // fullName(value: string) {
+  //   this.$query.whereILike('full_name', `%${value}%`)
+  // }
+}
