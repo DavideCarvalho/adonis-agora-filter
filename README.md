@@ -43,7 +43,8 @@ pagination, `computed`/virtual fields, to-many aggregates (`$count`/`$sum`/…),
 `distinct` projection, Postgres tsvector full-text search, and pgvector
 embedding-similarity ordering. A filter is authored as a **class** (`BaseModelFilter` — a method per request key,
 `this.$query`, a `setup()` scope, constructor injection through the container,
-`node ace make:filter`) or as a declarative `defineFilter` spec (tenant scope,
+`node ace make:filter`, and optional `@filterFor` / `@filterable` decorators) or as
+a declarative `defineFilter` spec (tenant scope,
 default filters/sort, field aliases, server-side value coercion); both compile to
 the same pipeline. There is an optional provider registering chainable Lucid
 macros (`applyFilterFromRequest` / `filterPaginate`), a `Filterable` model mixin,

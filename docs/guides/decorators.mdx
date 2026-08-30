@@ -1,0 +1,177 @@
+---
+title: Decorators
+icon: AtSign
+description: Bind a filter method to the request keys it answers with @filterFor, and declare a model's filterable, sortable and searchable columns where the columns live.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Two things a [filter class](/docs/filter/guides/filter-classes) cannot say well with names and
+statics alone: a request key that could never be a method name, and an allow-list that would rather
+live next to the column it allows. Decorators say both.
+
+They are **additive**. The statics are still the primary form — `static filterable`, `static
+sortable`, `static blacklist`, a method whose name is its key — and a filter written entirely
+without decorators keeps working exactly as before.
+
+## `@filterFor` — bind a method to its keys
+
+```ts title="app/filters/user_filter.ts"
+import { BaseModelFilter, filterFor } from '@adonis-agora/filter'
+
+export default class UserFilter extends BaseModelFilter {
+  static model = User
+
+  // a key no method name could spell
+  @filterFor('team.name')
+  byTeamName(value: string) {
+    this.$query.whereHas('team', (team) => team.whereILike('name', `%${value}%`))
+  }
+
+  // one method, several keys
+  @filterFor('q', 'query', 'term')
+  freeText(value: string) {
+    this.$query.whereILike('bio', `%${value}%`)
+  }
+}
+```
+
+`?filter[team.name]=corvos` reaches `byTeamName`. `?q=`, `?filter[query]=` and `?filter[term]=`
+all reach `freeText`.
+
+A bound method answers **only** its declared keys: `?filter[byTeamName]=` stops working the moment
+the binding exists. That is the second reason to reach for it — the request key becomes a contract
+you declared, so renaming the method is a refactor rather than a silent break for every client.
+
+<Callout type="warn" title="A key the wire format owns is refused at import">
+`@filterFor('sort')` — or `page`, `size`, `search`, `distinct`, `include`, the cursor params —
+throws `FilterDefinitionError` when the class is defined, not on the request that would have
+misbehaved. Those keys are read by the parser before dispatch ever happens, so a method could
+never have answered them.
+</Callout>
+
+## `@filterable` / `@sortable` / `@searchable` — declare the surface on the model
+
+The allow-list can live where the column does, stacked under Lucid's own `@column()`:
+
+```ts title="app/models/user.ts"
+import { compose } from '@adonisjs/core/helpers'
+import { BaseModel, column } from '@adonisjs/lucid/orm'
+import { Filterable, filterable, searchable, sortable } from '@adonis-agora/filter'
+
+export default class User extends compose(BaseModel, Filterable) {
+  static $filter = () => UserFilter
+
+  @column({ isPrimary: true })
+  declare id: number
+
+  @column()
+  @filterable()
+  @searchable()
+  @sortable()
+  declare name: string
+
+  @column()
+  @filterable()
+  @searchable()
+  declare email: string
+
+  @column()
+  @filterable('number')
+  @sortable()
+  declare age: number
+
+  @column({ serializeAs: null })
+  declare passwordHash: string // undecorated — unreachable, as it should be
+}
+```
+
+```ts title="app/filters/user_filter.ts"
+export default class UserFilter extends BaseModelFilter {
+  static model = User // ← this is what picks the columns up
+
+  setup() {
+    this.$query.where('tenantId', this.$ctx.auth.user!.tenantId)
+  }
+}
+```
+
+`static model` is the wiring: the filter reads the decorators off the model it points at. A column
+with no decorator is reachable by nothing — the same failure-closed default the array form has.
+
+The optional argument to `@filterable` is the field's kind — `'string' | 'number' | 'boolean' |
+'date' | 'json'` — the same value the [colocated `filterable` map](/docs/filter/guides/filter-config)
+takes. It drives value coercion and the [generated client's](/docs/filter/codegen) types.
+
+### A filter can still narrow what the model opens
+
+A static on the filter class **replaces** the corresponding list outright. That is what makes a
+stricter filter over a shared model possible:
+
+```ts title="app/filters/public_user_filter.ts"
+export default class PublicUserFilter extends BaseModelFilter {
+  static model = User
+  static filterable = ['name'] // the model says name, email, age — here, only name
+}
+```
+
+Only `fieldTypes` merges per field, because a column's kind is a fact about the column rather than
+a decision about who may reach it.
+
+## Which form to reach for
+
+| You want | Write |
+|---|---|
+| a plain column allow-list, in one place, per filter | `static filterable = [...]` |
+| the allow-list next to the columns, shared by every filter over that model | `@filterable()` on the model |
+| a key that is a plain method name (`fullName`, `minAge`) | just the method |
+| a key that is not a valid identifier (`team.name`) | `@filterFor('team.name')` |
+| several keys answered by one method | `@filterFor('q', 'query')` |
+| the public key pinned against a rename | `@filterFor('...')` |
+
+## Both decorator flavours
+
+Every decorator here works under **legacy** decorators (`experimentalDecorators`, which AdonisJS
+enables and Lucid's `@column` requires — so this is what your app compiles today) and under
+**standard** TC39 decorators (TypeScript 5's default when that flag is off). Which one is running
+is decided from the shape of the arguments the decorator is handed, at call time.
+
+The standard flavour records through the decorator metadata bag, so it needs `Symbol.metadata` to
+exist at runtime. If it does not, the decorator throws and says so rather than registering
+nothing:
+
+```ts title="bin/server.ts"
+// only needed if you compile with standard decorators on a runtime without Symbol.metadata
+;(Symbol as { metadata?: symbol }).metadata ??= Symbol.for('Symbol.metadata')
+```
+
+Nothing is needed for a normal AdonisJS app.
+
+## Inheritance
+
+Both families inherit. A shared abstract filter's `@filterFor` bindings apply to every subclass,
+and a base model's decorated columns apply to every model that extends it — with a subclass's own
+declarations layered on top.
+
+```ts title="app/filters/tenant_filter.ts"
+export abstract class TenantFilter extends BaseModelFilter {
+  @filterFor('tenant.slug')
+  byTenantSlug(value: string) {
+    this.$query.whereHas('tenant', (tenant) => tenant.where('slug', value))
+  }
+}
+
+export default class UserFilter extends TenantFilter {
+  static model = User // `?filter[tenant.slug]=acme` works here too
+}
+```
+
+## Excluding one
+
+`static blacklist` still wins: a method named there is never dispatched, binding or not.
+
+```ts
+export default class UserFilter extends BaseModelFilter {
+  static blacklist = ['internalOnly']
+}
+```

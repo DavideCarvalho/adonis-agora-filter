@@ -68,6 +68,8 @@ export type {
   FilterRequestContext,
 } from './apply_from_request.js';
 export { BaseModelFilter } from './base_model_filter.js';
+export { filterFor, filterable, searchable, sortable } from './decorators.js';
+export type { DualDecorator, StandardDecoratorContext } from './decorators.js';
 export {
   dispatchKeys,
   isFilterClass,

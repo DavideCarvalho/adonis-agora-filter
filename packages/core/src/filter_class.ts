@@ -1,9 +1,45 @@
 import { BaseModelFilter } from './base_model_filter.js';
+import { readDecorators } from './decorator_metadata.js';
 import { type FilterSpec, defineFilter } from './filter_spec.js';
+import type { FilterFieldTypeInfo } from './generate_client.js';
 
-/** A filter class as the container hands it back: constructible, extending {@link BaseModelFilter}. */
+/**
+ * A filter class as the container hands it back: constructible, extending {@link BaseModelFilter}
+ * — and carrying that base's static declarations (`filterable`, `sortable`, `blacklist`, …).
+ *
+ * Spelled as an intersection with `typeof BaseModelFilter` rather than an index signature: a
+ * concrete `class UserFilter extends BaseModelFilter` has no index signature, so
+ * `Record<string, unknown>` here would make every real filter class *unassignable* to this type —
+ * `static $filter = () => UserFilter` on a model would not compile.
+ */
 // biome-ignore lint/suspicious/noExplicitAny: constructor args are the class's own injected deps.
-export type FilterClass = (new (...args: any[]) => BaseModelFilter) & Record<string, unknown>;
+export type FilterClass = new (...args: any[]) => BaseModelFilter;
+
+/** The static declarations a filter class may carry, as the internals read them. */
+type FilterStatics = Partial<
+  Pick<
+    typeof BaseModelFilter,
+    | 'model'
+    | 'filterable'
+    | 'sortable'
+    | 'searchable'
+    | 'fieldTypes'
+    | 'blacklist'
+    | 'dropId'
+    | 'camelCase'
+  >
+> &
+  Record<string, unknown>;
+
+/**
+ * A filter class's static side. Read through a cast rather than declared on {@link FilterClass}
+ * itself: an index signature there would make every concrete `class UserFilter extends
+ * BaseModelFilter` *unassignable* to the type — `static $filter = () => UserFilter` on a model
+ * would stop compiling.
+ */
+function statics(cls: FilterClass): FilterStatics {
+  return cls as unknown as FilterStatics;
+}
 
 /** Request keys the wire format owns — never dispatched to a method of the same name. */
 const RESERVED_KEYS = new Set([
@@ -53,12 +89,13 @@ export function dispatchKeys(cls: FilterClass): ReadonlySet<string> {
   const cached = KEY_CACHE.get(cls);
   if (cached) return cached;
 
-  const blacklist = new Set((cls.blacklist as string[] | undefined) ?? []);
+  const blacklist = new Set(statics(cls).blacklist ?? []);
+  const bound = explicitBindings(cls).methods;
   const keys = new Set<string>();
   let proto = cls.prototype as object | null;
   while (proto !== null && proto !== BaseModelFilter.prototype && proto !== Object.prototype) {
     for (const name of Object.getOwnPropertyNames(proto)) {
-      if (RESERVED_METHODS.has(name) || blacklist.has(name)) continue;
+      if (RESERVED_METHODS.has(name) || blacklist.has(name) || bound.has(name)) continue;
       if (name.startsWith('$') || name.startsWith('_')) continue;
       const descriptor = Object.getOwnPropertyDescriptor(proto, name);
       if (typeof descriptor?.value === 'function') keys.add(name);
@@ -69,6 +106,35 @@ export function dispatchKeys(cls: FilterClass): ReadonlySet<string> {
   return keys;
 }
 
+/**
+ * The `@filterFor` bindings a class declares: request key → method, and the set of methods that
+ * are bound (and so no longer answer to their own name).
+ *
+ * Memoized per class alongside the dispatch keys — decorators run at class-definition time, long
+ * before the first request reaches the class.
+ */
+function explicitBindings(cls: FilterClass): { keys: Map<string, string>; methods: Set<string> } {
+  const cached = BINDING_CACHE.get(cls);
+  if (cached) return cached;
+
+  const keys = new Map<string, string>();
+  const methods = new Set<string>();
+  const blacklist = new Set(statics(cls).blacklist ?? []);
+  for (const [method, bound] of Object.entries(readDecorators(cls).filterFor ?? {})) {
+    if (blacklist.has(method)) continue;
+    methods.add(method);
+    for (const key of bound) keys.set(key, method);
+  }
+
+  const bindings = { keys, methods };
+  BINDING_CACHE.set(cls, bindings);
+  return bindings;
+}
+
+const BINDING_CACHE = new WeakMap<
+  FilterClass,
+  { keys: Map<string, string>; methods: Set<string> }
+>();
 const KEY_CACHE = new WeakMap<FilterClass, Set<string>>();
 const SPEC_CACHE = new WeakMap<FilterClass, FilterSpec>();
 
@@ -86,8 +152,10 @@ export function specFromFilterClass(cls: FilterClass): FilterSpec {
   const cached = SPEC_CACHE.get(cls);
   if (cached) return cached;
 
+  const declared = declaredByModel(cls);
   const spec = defineFilter({
-    filterable: (cls.filterable as never) ?? [],
+    ...declared,
+    filterable: (statics(cls).filterable as never) ?? declared.filterable ?? [],
     ...pick(cls, [
       'model',
       'sortable',
@@ -112,10 +180,51 @@ export function specFromFilterClass(cls: FilterClass): FilterSpec {
   return spec;
 }
 
+/**
+ * What the model itself declares through `@filterable` / `@sortable` / `@searchable` on its
+ * columns, read off the filter's `static model`.
+ *
+ * These are **fallbacks**: a static on the filter class replaces the corresponding list outright,
+ * so a stricter filter over a shared model can narrow what the model opens up. Only `fieldTypes`
+ * merges per field — it is metadata about a column, not a decision about who may reach it.
+ */
+function declaredByModel(cls: FilterClass): {
+  filterable?: string[];
+  sortable?: string[];
+  searchable?: string[];
+  fieldTypes?: Record<string, FilterFieldTypeInfo>;
+} {
+  const model = statics(cls).model as object | undefined;
+  if (!model) return {};
+
+  const declared = readDecorators(model);
+  const out: {
+    filterable?: string[];
+    sortable?: string[];
+    searchable?: string[];
+    fieldTypes?: Record<string, FilterFieldTypeInfo>;
+  } = {};
+
+  if (declared.filterable) {
+    out.filterable = Object.keys(declared.filterable);
+    const fieldTypes: Record<string, FilterFieldTypeInfo> = {};
+    for (const [column, kind] of Object.entries(declared.filterable)) {
+      if (kind !== null) fieldTypes[column] = { kind };
+    }
+    const merged = { ...fieldTypes, ...statics(cls).fieldTypes };
+    if (Object.keys(merged).length > 0) out.fieldTypes = merged;
+  }
+  if (declared.sortable) out.sortable = [...new Set(declared.sortable)];
+  if (declared.searchable) out.searchable = [...new Set(declared.searchable)];
+
+  return out;
+}
+
 function pick(cls: FilterClass, names: readonly string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
+  const statics = cls as unknown as Record<string, unknown>;
   for (const name of names) {
-    const value = cls[name];
+    const value = statics[name];
     if (value !== undefined) out[name] = value;
   }
   return out;
@@ -128,18 +237,23 @@ function pick(cls: FilterClass, names: readonly string[]): Record<string, unknow
  */
 export function methodForKey(cls: FilterClass, key: string): string | undefined {
   if (typeof key !== 'string' || key.length === 0 || RESERVED_KEYS.has(key)) return undefined;
+
+  const bound = explicitBindings(cls).keys.get(key);
+  if (bound !== undefined) return bound;
+
   const keys = dispatchKeys(cls);
   if (keys.has(key)) return key;
 
-  if (cls.camelCase !== false) {
+  const knobs = statics(cls);
+  if (knobs.camelCase !== false) {
     const camel = toCamelCase(key);
     if (keys.has(camel)) return camel;
-    if (cls.dropId === true) {
+    if (knobs.dropId === true) {
       const dropped = stripId(camel);
       if (dropped.length > 0 && keys.has(dropped)) return dropped;
     }
   }
-  if (cls.dropId === true) {
+  if (knobs.dropId === true) {
     const dropped = stripId(key);
     if (dropped.length > 0 && keys.has(dropped)) return dropped;
   }

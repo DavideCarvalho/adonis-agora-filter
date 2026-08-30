@@ -74,6 +74,14 @@ except through the methods you wrote, which is the tightest allow-list there is.
 method, so a `sort()` method of your own can never be triggered by `?sort=`.
 </Callout>
 
+## When a name is not enough
+
+A method's name is its key, which covers most keys and no odd ones. Two decorators cover the rest:
+`@filterFor('team.name')` binds a method to keys a method name could never spell (and pins the
+public key against a rename), and `@filterable()` / `@sortable()` / `@searchable()` declare the
+allow-list on the model's columns instead of in a static. Both are optional sugar over everything
+on this page — see [Decorators](/docs/filter/guides/decorators).
+
 ## The class is resolved through the container
 
 `@inject()` works because the filter is constructed by the IoC container, using the request's own
