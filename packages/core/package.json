@@ -39,13 +39,7 @@
       "default": "./dist/providers/filter_provider.js"
     }
   },
-  "files": [
-    "dist/",
-    "stubs/",
-    "README.md",
-    "CHANGELOG.md",
-    "skills"
-  ],
+  "files": ["dist/", "stubs/", "README.md", "CHANGELOG.md", "skills"],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs",
