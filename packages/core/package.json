@@ -1,7 +1,7 @@
 {
   "name": "@adonis-agora/filter",
   "version": "0.8.0",
-  "description": "Server-side query filtering/sorting/pagination for AdonisJS — Spatie-style input, a Lucid adapter, and field allow-listing. Part of the Agora ecosystem.",
+  "description": "Server-side query filtering/sorting/pagination for AdonisJS \u2014 Spatie-style input, a Lucid adapter, and field allow-listing. Part of the Agora ecosystem.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -54,9 +54,6 @@
     "@adonisjs/lucid": "^22.0.0"
   },
   "peerDependenciesMeta": {
-    "@adonisjs/core": {
-      "optional": true
-    },
     "@adonisjs/lucid": {
       "optional": true
     }
