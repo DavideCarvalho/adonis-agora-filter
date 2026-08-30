@@ -3,6 +3,7 @@
   "pages": [
     "controllers",
     "filter-classes",
+    "decorators",
     "lucid",
     "operators",
     "filter-config",
