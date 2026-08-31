@@ -5,7 +5,7 @@ import { parseFilterRequest } from '../src/parse_request.js';
 import { applyFilter } from '../src/runner.js';
 import type { FilterConfig } from '../src/types.js';
 import { InvalidColumnFilterError } from '../src/validate-column-filter.js';
-import { type PgHarness, createPgHarness, probePgReachable } from './support/pg.js';
+import { createPgHarness, type PgHarness, probePgReachable } from './support/pg.js';
 
 // Resolved at collection time so the pg-backed blocks skip (not fail) when no
 // Postgres is reachable.

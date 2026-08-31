@@ -7,8 +7,7 @@
  * red CI on master when `version.spec.ts` caught it after the merge. Running this as part of
  * `version-packages` closes the window — the test stays as the proof, this removes the mistake.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const PACKAGES = join(import.meta.dirname, '..', 'packages');

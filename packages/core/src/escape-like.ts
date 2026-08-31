@@ -8,7 +8,7 @@
  */
 export function escapeLike(value: string, dialect: 'standard' | 'mssql' = 'standard'): string {
   if (dialect === 'mssql') {
-    return value.replace(/[%_\[]/g, '[$&]');
+    return value.replace(/[%_[]/g, '[$&]');
   }
   return value.replace(/[%_\\]/g, '\\$&');
 }

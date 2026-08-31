@@ -7,8 +7,8 @@ import type {
 } from '@adonisjs/lucid/types/model';
 import {
   type ApplyFromRequestOptions,
-  type FilterRequestContext,
   applyFilterFromRequest,
+  type FilterRequestContext,
 } from './apply_from_request.js';
 import type { FilterClass } from './filter_class.js';
 import type { FilterSpec } from './filter_spec.js';

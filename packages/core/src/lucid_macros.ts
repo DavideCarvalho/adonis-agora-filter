@@ -2,8 +2,8 @@ import { HttpContext } from '@adonisjs/core/http';
 import type { LucidModel } from '@adonisjs/lucid/types/model';
 import {
   type ApplyFromRequestOptions,
-  type FilterRequestContext,
   applyFilterFromRequest,
+  type FilterRequestContext,
 } from './apply_from_request.js';
 import { type FilterClass, isFilterClass } from './filter_class.js';
 import type { FilterSpec } from './filter_spec.js';

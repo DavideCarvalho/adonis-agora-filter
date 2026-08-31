@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type LucidModelLike, discoverAggregateSources } from '../src/aggregate.js';
+import { discoverAggregateSources, type LucidModelLike } from '../src/aggregate.js';
 import { applyComputedField } from '../src/lucid_adapter.js';
 import type { ComputedSource } from '../src/types.js';
 import { MockQueryBuilder } from './mock_query_builder.js';

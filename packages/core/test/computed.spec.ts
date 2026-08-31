@@ -32,7 +32,7 @@ describe('applyComputedField — raw predicate with bound value', () => {
     applyComputedField(qb, 'expr', { field: 'x', operator: 'contains', value: 'a%b' });
     const call = qb.find('whereRaw');
     expect(call?.args[0]).toBe('(expr) ilike ?');
-    expect((call?.args[1] as string[])[0]).toBe('%a\\%b%');
+    expect((call!.args[1] as string[])[0]).toBe('%a\\%b%');
   });
 });
 

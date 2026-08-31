@@ -1,10 +1,10 @@
 import { compose } from '@adonisjs/core/helpers';
-import { BaseModel, ModelQueryBuilder, column } from '@adonisjs/lucid/orm';
+import { BaseModel, column, ModelQueryBuilder } from '@adonisjs/lucid/orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BaseModelFilter } from '../src/base_model_filter.js';
 import { Filterable } from '../src/filterable_mixin.js';
 import { registerFilterMacros } from '../src/lucid_macros.js';
-import { type PgHarness, createPgHarness, probePgReachable } from './support/pg.js';
+import { createPgHarness, type PgHarness, probePgReachable } from './support/pg.js';
 
 const pgUp = await probePgReachable();
 

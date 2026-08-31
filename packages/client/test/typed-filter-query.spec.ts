@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { filterQueryTyped } from '../src/typed-filter-query-builder.js';
 import type { TypedFilterQuery } from '../src/typed-filter-query.js';
+import { filterQueryTyped } from '../src/typed-filter-query-builder.js';
 
 type UserFields = 'name' | 'age' | 'status';
 

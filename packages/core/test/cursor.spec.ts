@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  type ResolvedCursor,
   buildCursorPage,
   buildKeyset,
   decodeCursor,
   encodeCursor,
   extractCursorValues,
+  type ResolvedCursor,
   reverseKeyset,
 } from '../src/cursor.js';
 

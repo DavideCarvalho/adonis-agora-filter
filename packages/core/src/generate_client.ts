@@ -23,6 +23,7 @@ import type { FilterSpec, RelationSpec } from './filter_spec.js';
 // Moved to types.ts — the kind now drives server-side value coercion too, not just codegen.
 // Imported for local use and re-exported so existing `from '.../generate_client.js'` imports keep working.
 import type { FilterFieldKind } from './types.js';
+
 export type { FilterFieldKind };
 
 /**

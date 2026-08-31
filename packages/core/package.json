@@ -39,7 +39,13 @@
       "default": "./dist/providers/filter_provider.js"
     }
   },
-  "files": ["dist/", "stubs/", "README.md", "CHANGELOG.md", "skills"],
+  "files": [
+    "dist/",
+    "stubs/",
+    "README.md",
+    "CHANGELOG.md",
+    "skills"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json && pnpm run copy:stubs",
@@ -59,17 +65,17 @@
     }
   },
   "devDependencies": {
-    "@adonisjs/assembler": "8.4.0",
-    "@tanstack/intent": "^0.3.2",
-    "@adonisjs/core": "7.4.0",
+    "@adonisjs/assembler": "8.5.0",
+    "@adonisjs/core": "7.5.0",
     "@adonisjs/lucid": "22.4.2",
-    "@types/luxon": "3.7.4",
-    "@types/node": "20.19.43",
-    "@types/pg": "8.21.0",
+    "@tanstack/intent": "^0.3.7",
+    "@types/luxon": "3.7.5",
+    "@types/node": "26.4.0",
+    "@types/pg": "8.23.1",
     "luxon": "3.7.2",
     "pg": "8.23.0",
-    "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=20.6.0"

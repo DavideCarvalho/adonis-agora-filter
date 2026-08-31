@@ -11,8 +11,8 @@ import type {
   ValueAt,
   ValueForOp,
 } from './field-types.js';
-import { FilterQueryBuilder } from './filter-query-builder.js';
 import type { FilterQueryResult } from './filter-query-builder.js';
+import { FilterQueryBuilder } from './filter-query-builder.js';
 import type { FilterOperator } from './types.js';
 
 /**

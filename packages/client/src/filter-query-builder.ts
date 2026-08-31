@@ -1,6 +1,6 @@
 import { columnFiltersToQueryString, flatObjectToQueryString } from './to-query-string.js';
-import { FILTER_OPERATORS } from './types.js';
 import type { ColumnFilter, FilterOperator } from './types.js';
+import { FILTER_OPERATORS } from './types.js';
 import {
   UNARY_OPERATORS,
   validateAddOperator,

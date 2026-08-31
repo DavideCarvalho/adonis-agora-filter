@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyFilterFromRequest } from '../src/apply_from_request.js';
 import { BaseModelFilter } from '../src/base_model_filter.js';
-import { filterFor, filterable, searchable, sortable } from '../src/decorators.js';
+import { filterable, filterFor, searchable, sortable } from '../src/decorators.js';
 import { dispatchKeys, methodForKey, specFromFilterClass } from '../src/filter_class.js';
 import { FilterDefinitionError } from '../src/filter_spec.js';
 import { MockQueryBuilder } from './mock_query_builder.js';
