@@ -2,7 +2,7 @@ import { compose } from '@adonisjs/core/helpers';
 import { BaseModel, column } from '@adonisjs/lucid/orm';
 import type { ModelQueryBuilderContract } from '@adonisjs/lucid/types/model';
 import { BaseModelFilter } from '../../src/base_model_filter.js';
-import { filterFor, filterable, searchable, sortable } from '../../src/decorators.js';
+import { filterable, filterFor, searchable, sortable } from '../../src/decorators.js';
 import { Filterable } from '../../src/filterable_mixin.js';
 
 /**

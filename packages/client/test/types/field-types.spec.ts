@@ -11,8 +11,8 @@ import type {
 } from '../../src/field-types.js';
 import { FilterQueryBuilder } from '../../src/filter-query-builder.js';
 import { filterQueryTyped } from '../../src/typed-filter-query-builder.js';
-import { FILTER_OPERATORS } from '../../src/types.js';
 import type { FilterOperator } from '../../src/types.js';
+import { FILTER_OPERATORS } from '../../src/types.js';
 import {
   ARRAY_OPERATORS,
   ARRAY_OPS,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyCursorFromRequest, applyFilterFromRequest } from '../src/apply_from_request.js';
-import { FilterDefinitionError, defineFilter, specToFilterConfig } from '../src/filter_spec.js';
+import { defineFilter, FilterDefinitionError, specToFilterConfig } from '../src/filter_spec.js';
 import { InvalidColumnFilterError } from '../src/validate-column-filter.js';
 import { MockQueryBuilder } from './mock_query_builder.js';
 

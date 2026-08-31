@@ -1,6 +1,6 @@
 import { BaseModelFilter } from './base_model_filter.js';
 import { readDecorators } from './decorator_metadata.js';
-import { type FilterSpec, defineFilter } from './filter_spec.js';
+import { defineFilter, type FilterSpec } from './filter_spec.js';
 import type { FilterFieldTypeInfo } from './generate_client.js';
 
 /**

@@ -43,7 +43,7 @@ describe('normalizeInput', () => {
     const input = JSON.parse('{"__proto__": {"malicious": true}, "name": "safe"}');
     const out = normalizeInput(input, { normalizer: 'camelCase' });
     expect(out).toEqual({ name: 'safe' });
-    expect(Object.prototype.hasOwnProperty.call(out, '__proto__')).toBe(false);
+    expect(Object.hasOwn(out, '__proto__')).toBe(false);
   });
 
   it('drops constructor/prototype/toString/valueOf keys', () => {

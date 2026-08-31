@@ -2,7 +2,7 @@ import { BaseModel, column } from '@adonisjs/lucid/orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyFilter } from '../src/runner.js';
 import type { ComputedFields, FilterConfig } from '../src/types.js';
-import { type PgHarness, createPgHarness, probePgReachable } from './support/pg.js';
+import { createPgHarness, type PgHarness, probePgReachable } from './support/pg.js';
 
 // Resolved at collection time so the pg-backed blocks skip (not fail) when no
 // Postgres is reachable.

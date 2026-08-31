@@ -24,7 +24,12 @@
       "default": "./dist/tanstack.js"
     }
   },
-  "files": ["dist/", "README.md", "CHANGELOG.md", "skills"],
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "skills"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -42,10 +47,10 @@
     }
   },
   "devDependencies": {
-    "@tanstack/intent": "^0.3.2",
-    "@tanstack/table-core": "8.21.3",
-    "typescript": "5.9.3",
-    "vitest": "3.2.7"
+    "@tanstack/intent": "^0.3.7",
+    "@tanstack/table-core": "9.2.4",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=20.6.0"

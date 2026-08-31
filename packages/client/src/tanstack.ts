@@ -1,6 +1,6 @@
 import type { ColumnFiltersState, PaginationState, SortingState } from '@tanstack/table-core';
-import { FilterQueryBuilder } from './filter-query-builder.js';
 import type { FilterQueryResult } from './filter-query-builder.js';
+import { FilterQueryBuilder } from './filter-query-builder.js';
 import type { FilterOperator } from './types.js';
 
 /**

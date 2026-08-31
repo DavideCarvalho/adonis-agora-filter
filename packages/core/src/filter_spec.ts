@@ -1,11 +1,12 @@
-import { type LucidModelLike, discoverAggregateSources } from './aggregate.js';
+import { discoverAggregateSources, type LucidModelLike } from './aggregate.js';
 import type { FieldAliases } from './field_aliases.js';
 import type { FilterFieldTypeInfo } from './generate_client.js';
 import type { ColumnFilter } from './operators.js';
-import type { ComputedFields, FilterFieldKind } from './types.js';
 import type {
   AllowList,
+  ComputedFields,
   FilterConfig,
+  FilterFieldKind,
   FullTextSearchConfig,
   SortItem,
   VectorSimilarityConfig,

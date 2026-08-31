@@ -1,9 +1,9 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { BaseCommand, args, flags } from '@adonisjs/core/ace';
+import { args, BaseCommand, flags } from '@adonisjs/core/ace';
 import type { CommandOptions } from '@adonisjs/core/types/ace';
-import { generateFilterClients } from '../src/generate_client.js';
 import type { FilterClientManifest } from '../src/generate_client.js';
+import { generateFilterClients } from '../src/generate_client.js';
 
 /**
  * `node ace make:filter-client [entrypoint]` — the idiomatic AdonisJS equivalent
