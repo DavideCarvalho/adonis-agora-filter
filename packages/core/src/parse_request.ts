@@ -1,5 +1,5 @@
 import type { ColumnFilter, FilterOperatorInput } from './operators.js';
-import type { FilterInput, SortItem } from './types.js';
+import type { FilterInput, GroupByCountRequest, SortItem } from './types.js';
 
 function toInt(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -152,6 +152,7 @@ function parsePagination(qs: Record<string, unknown>): { page?: number; size?: n
  * - `filter[age][gte]=18` → operator filter
  * - `sort=-createdAt,name` → sort items
  * - `distinct=afsc,base` / `distinct[]=afsc&distinct[]=base` → distinct fields
+ * - `groupByCount[field]=tag&groupByCount[limit]=20` → value enumeration
  * - `search=term`, `page`/`size` (or `page[number]`/`page[size]`)
  *
  * It also accepts the structured shape the client builder's `build()` returns —
@@ -193,5 +194,27 @@ export function parseFilterRequest(qs: Record<string, unknown>): FilterInput {
   if (page !== undefined) out.page = page;
   if (size !== undefined) out.size = size;
 
+  const groupByCount = parseGroupByCount(qs.groupByCount);
+  if (groupByCount !== undefined) out.groupByCount = groupByCount;
+
+  return out;
+}
+
+/**
+ * Parse the `groupByCount` block the client builder emits
+ * (`groupByCount[field]=tag&groupByCount[limit]=20&groupByCount[offset]=…&groupByCount[search]=…`).
+ * Returns `undefined` when no usable block is present. Pure reshape, like the rest of this
+ * module — field validation happens at execution, against the allow-list.
+ */
+export function parseGroupByCount(value: unknown): GroupByCountRequest | undefined {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const block = value as Record<string, unknown>;
+  if (typeof block.field !== 'string' || block.field.trim() === '') return undefined;
+  const out: GroupByCountRequest = { field: block.field };
+  const limit = toInt(block.limit);
+  if (limit !== undefined) out.limit = limit;
+  const offset = toInt(block.offset);
+  if (offset !== undefined) out.offset = offset;
+  if (typeof block.search === 'string' && block.search.length > 0) out.search = block.search;
   return out;
 }

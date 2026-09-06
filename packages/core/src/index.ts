@@ -11,6 +11,7 @@ export type {
   FilterRequestContext,
 } from './apply_from_request.js';
 export { applyCursorFromRequest, applyFilterFromRequest } from './apply_from_request.js';
+export { BaseFilter } from './base_filter.js';
 export { BaseModelFilter } from './base_model_filter.js';
 export type { CursorPage, CursorParams, CursorValues, ResolvedCursor } from './cursor.js';
 export {
@@ -21,6 +22,8 @@ export {
   extractCursorValues,
   reverseKeyset,
 } from './cursor.js';
+export type { ApplyCustomFilterOptions, CustomFilterClass } from './custom_filter.js';
+export { applyCustomFilter } from './custom_filter.js';
 export type { DualDecorator, StandardDecoratorContext } from './decorators.js';
 export { filterable, filterFor, searchable, sortable } from './decorators.js';
 export { escapeLike } from './escape-like.js';
@@ -67,12 +70,19 @@ export {
   generateFilterClients,
   sortableFieldPaths,
 } from './generate_client.js';
+export type {
+  GroupByCountAdapter,
+  GroupByCountFromRequestOptions,
+  GroupByCountRow,
+} from './group_by_count.js';
+export { groupByCountFromRequest } from './group_by_count.js';
 export {
   applyColumnFilters,
   applyComputedField,
   applyComputedSort,
   applyDistinct,
   applyFullTextSearch,
+  applyGroupByCount,
   applyKeyset,
   applySearch,
   applySort,
@@ -94,9 +104,15 @@ export type {
   FilterOperatorInput,
 } from './operators.js';
 export { FILTER_OPERATORS, OPERATOR_ALIASES } from './operators.js';
-export { parseDistinct, parseFilterRequest, parseSort, toColumnFilters } from './parse_request.js';
+export {
+  parseDistinct,
+  parseFilterRequest,
+  parseGroupByCount,
+  parseSort,
+  toColumnFilters,
+} from './parse_request.js';
 export type { CursorConfig, ResolvedPagination } from './runner.js';
-export { applyCursor, applyFilter } from './runner.js';
+export { applyCursor, applyFilter, applyFilterConditions, resolveSafeDistinct } from './runner.js';
 export { resolveInputFromRequest } from './source_resolver.js';
 export type { SpatieInput } from './spatie_parser.js';
 export { parseSpatieRequest } from './spatie_parser.js';
@@ -108,6 +124,8 @@ export type {
   FilterConfig,
   FilterInput,
   FullTextSearchConfig,
+  GroupByCountOptions,
+  GroupByCountRequest,
   InputNormalizer,
   InputSource,
   SortItem,

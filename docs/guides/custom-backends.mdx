@@ -1,0 +1,81 @@
+---
+title: Custom Backends
+icon: Blocks
+description: One class style over any backend — BaseFilter with a draft instead of a Lucid builder, driven by applyCustomFilter.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Not every listing is a Lucid query. An operations console may read from an in-memory store, an
+engine client, or a predicate bag under construction — and it should still filter with the same
+class style, the same envelope, and the same error shapes as a model listing. That is what the
+generic base is for: `BaseFilter<TQuery>`, shared with [filter classes](/docs/filter/guides/filter-classes).
+
+## The shape
+
+```ts title="app/durable/run_filter.ts"
+import { BaseFilter } from '@adonis-agora/filter'
+
+export class RunQueryDraft {
+  readonly query: RunQuery = {}
+
+  narrow(patch: RunQuery) {
+    Object.assign(this.query, patch)
+  }
+}
+
+export class RunFilter extends BaseFilter<RunQueryDraft> {
+  declare $query: RunQueryDraft
+
+  status(value: unknown, operator: string) {
+    const values = (Array.isArray(value) ? value : [value]).map(String)
+    this.$query.narrow(values.length === 1 ? { status: values[0] } : { statuses: values })
+  }
+}
+```
+
+```ts title="app/controllers/runs_controller.ts"
+import { applyCustomFilter } from '@adonis-agora/filter'
+
+export default class RunsController {
+  async index(ctx: HttpContext) {
+    const draft = new RunQueryDraft()
+    await applyCustomFilter(draft, RunFilter, ctx)
+    return engine.listRuns(draft.query)
+  }
+}
+```
+
+A method's name IS the key it owns; it receives `(value, operator, field)` — the same call the
+model form makes. `setup()`, `$input`, `$parsed`, `$ctx` and container resolution all behave
+identically.
+
+## What differs from a model filter
+
+Two things, both load-bearing:
+
+- **There is no declarative path.** A model filter applies `static filterable` columns to SQL for
+  you; a draft has no SQL, so every key needs a method — which is the tightest allow-list there
+  is. A dotted field falls back to its head segment (`attr.tier` reaches `attr` with the full
+  field), so one method owns a whole dynamic subtree.
+- **Unknown structured fields fail loudly.** `InvalidColumnFilterError` (a `400` at the
+  controller) instead of a silently widened listing — which matters wherever the matched set is
+  acted on, not just displayed. Bare legacy keys (`?tag=etl`) stay lenient: unknown ones are
+  ignored, so endpoint mechanics like `limit` keep working.
+
+`OR` groups are rejected for the same reason: a draft is an ANDed predicate bag and cannot
+express cross-field OR. `AND` groups recurse.
+
+## Testing one
+
+The draft is yours, so the test needs no database and no mock builder — construct the draft,
+run the class over a fake ctx, assert the draft:
+
+```ts title="tests/unit/run_filter.spec.ts"
+import { applyCustomFilter } from '@adonis-agora/filter'
+
+const draft = new RunQueryDraft()
+await applyCustomFilter(draft, RunFilter, { request: { qs: () => ({ tag: ['a', 'b'] }) } })
+
+assert.deepEqual(draft.query, { tags: ['a', 'b'] })
+```

@@ -64,7 +64,7 @@ function rawQs(ctx: FilterRequestContext | undefined): Record<string, unknown> {
  * the allow-list on purpose — they are trusted server policy, mirroring how the
  * NestJS runner applied `@TenantScoped` via the adapter's auto-field path.
  */
-function applyServerScope(
+export function applyServerScope(
   query: QueryBuilderLike,
   spec: FilterSpec,
   ctx: FilterRequestContext | undefined,
