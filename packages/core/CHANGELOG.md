@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 0.9.0
+
+### Minor Changes
+
+- [#35](https://github.com/DavideCarvalho/adonis-agora-filter/pull/35) [`b6424ec`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/b6424ec696dbf8b50928e03a619d0227f5436345) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - One class style that does everything: `BaseFilter<TQuery>` — the generic base behind `BaseModelFilter` (Lucid) and custom backends alike — plus `applyCustomFilter` (methods per key over a caller-created draft, same envelope, loud rejections) and `groupByCount` end to end (`FilterQueryBuilder.groupByCount()` + `groupByCount[field]` envelope + `groupByCountFromRequest` over Lucid `GROUP BY` or a `GroupByCountAdapter`, with scope, search and paging). Lucid gains the `select`/`count`/`groupBy`/`offset` aggregation seam (optional, non-breaking).
+
 ## 0.8.1
 
 ### Patch Changes
