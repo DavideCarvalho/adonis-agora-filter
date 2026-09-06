@@ -1,5 +1,11 @@
 # @adonis-agora/filter-client
 
+## 0.3.0
+
+### Minor Changes
+
+- [#35](https://github.com/DavideCarvalho/adonis-agora-filter/pull/35) [`b6424ec`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/b6424ec696dbf8b50928e03a619d0227f5436345) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `FilterQueryBuilder.groupByCount(field, { limit, offset, search })` — the pickers' query alongside the scope: emits the `groupByCount[field]` envelope (and `build()` carries it for POST bodies).
+
 ## 0.2.2
 
 ### Patch Changes
