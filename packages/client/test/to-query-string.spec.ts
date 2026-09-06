@@ -178,12 +178,9 @@ describe('FilterQueryBuilder.groupByCount()', () => {
       .where('tenant', 'acme')
       .groupByCount('tag', { limit: 20, offset: 5, search: 'et' })
       .toQueryString();
-    const query = new URLSearchParams(qs);
-    expect(query.get('filter[tenant]')).toBe('acme');
-    expect(query.get('groupByCount[field]')).toBe('tag');
-    expect(query.get('groupByCount[limit]')).toBe('20');
-    expect(query.get('groupByCount[offset]')).toBe('5');
-    expect(query.get('groupByCount[search]')).toBe('et');
+    expect(qs).toBe(
+      'filter%5Btenant%5D=acme&groupByCount%5Bfield%5D=tag&groupByCount%5Blimit%5D=20&groupByCount%5Boffset%5D=5&groupByCount%5Bsearch%5D=et',
+    );
   });
 
   it('emits a bare field with no bounds', () => {
