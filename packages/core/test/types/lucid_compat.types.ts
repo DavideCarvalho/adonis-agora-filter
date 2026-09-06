@@ -62,3 +62,17 @@ export function _passesRealBuilderByArgument(): void {
   acceptsSeam(Post.query());
   acceptsSeam(Author.query());
 }
+
+/**
+ * The aggregation seam `applyGroupByCount` drives must exist on real builders with compatible
+ * signatures — same proof as above, but `Required` (the members are optional on the seam so
+ * minimal custom implementations can omit them).
+ */
+declare function needsAggSeam(
+  qb: Required<Pick<QueryBuilderLike, 'select' | 'count' | 'groupBy' | 'offset'>>,
+): void;
+
+export function _passesAggSeamByArgument(): void {
+  needsAggSeam(Post.query());
+  needsAggSeam(Author.query());
+}

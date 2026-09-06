@@ -54,8 +54,21 @@ export interface FilterQueryResult {
   search?: string;
   sort?: SortItem[];
   distinct?: string[];
+  groupByCount?: GroupByCountSpec;
   paginate?: OffsetPagination;
   [key: string]: unknown;
+}
+
+/**
+ * A group-by-count aggregation: the distinct values of `field` with counts, over the rows the
+ * active filters select — what populates a filter dropdown. Terminal for entity rows (like
+ * `distinct`, it replaces row output), but composes with `where`/`search` as its scope.
+ */
+export interface GroupByCountSpec {
+  field: string;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  search?: string | undefined;
 }
 
 /**
@@ -70,6 +83,7 @@ export class FilterQueryBuilder {
   private searchTerm: string | undefined;
   private sorts: SortItem[] = [];
   private distinctFields: string[] = [];
+  private groupByCountSpec: GroupByCountSpec | undefined;
   private pagination: OffsetPagination | undefined;
 
   // ─── Reactivity (framework-agnostic store contract) ──────────────────────
@@ -263,6 +277,7 @@ export class FilterQueryBuilder {
     this.searchTerm = undefined;
     this.sorts = [];
     this.distinctFields = [];
+    this.groupByCountSpec = undefined;
     this.pagination = undefined;
     this.notify();
     return this;
@@ -476,6 +491,35 @@ export class FilterQueryBuilder {
     return this;
   }
 
+  /**
+   * Enumerates the distinct values of `field` with counts, over the rows the active
+   * `where`/`search` select — what populates a filter dropdown. Terminal for entity rows
+   * (replaces row output, like `distinct`), but composes with the scope.
+   *
+   * `limit` bounds the groups (highest count first — tag cardinality grows with the data, so
+   * the unbounded answer is a listing); `offset` pages that bound; `search` narrows to values
+   * containing the text, server-side.
+   *
+   * @example
+   * filterQuery().where('tenant', 'acme').groupByCount('tag', { limit: 20 }).build()
+   * // → { filter: { where: [...] }, groupByCount: { field: 'tag', limit: 20 } }
+   */
+  groupByCount(
+    field: string,
+    opts: { limit?: number; offset?: number; search?: string } = {},
+  ): this {
+    if (typeof field === 'string' && field !== '') {
+      this.groupByCountSpec = {
+        field,
+        ...(opts.limit !== undefined && { limit: opts.limit }),
+        ...(opts.offset !== undefined && { offset: opts.offset }),
+        ...(opts.search !== undefined && { search: opts.search }),
+      };
+    }
+    this.notify();
+    return this;
+  }
+
   // ─── Sort & Pagination ──────────────────────────────────────────────────
 
   /**
@@ -650,6 +694,9 @@ export class FilterQueryBuilder {
     if (this.distinctFields.length > 0) {
       result.distinct = [...this.distinctFields];
     }
+    if (this.groupByCountSpec !== undefined) {
+      result.groupByCount = { ...this.groupByCountSpec };
+    }
     if (this.pagination !== undefined) {
       result.paginate = { ...this.pagination };
     }
@@ -701,6 +748,18 @@ export class FilterQueryBuilder {
     // Build distinct
     if (this.distinctFields.length > 0) {
       parts.push(`distinct=${encodeURIComponent(this.distinctFields.join(','))}`);
+    }
+
+    // Build groupByCount — same bracket encoding as the filter keys above (the whole key is
+    // encoded, brackets included), so one parser reads both.
+    if (this.groupByCountSpec !== undefined) {
+      const { field, limit, offset, search } = this.groupByCountSpec;
+      const entries: Array<[string, unknown]> = [[`groupByCount[field]`, field]];
+      if (limit !== undefined) entries.push([`groupByCount[limit]`, limit]);
+      if (offset !== undefined) entries.push([`groupByCount[offset]`, offset]);
+      if (search !== undefined) entries.push([`groupByCount[search]`, search]);
+      const specQs = flatObjectToQueryString(Object.fromEntries(entries));
+      if (specQs) parts.push(specQs);
     }
 
     // Build pagination

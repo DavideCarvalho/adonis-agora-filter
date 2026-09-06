@@ -1,3 +1,4 @@
+import { BaseFilter } from './base_filter.js';
 import { BaseModelFilter } from './base_model_filter.js';
 import { readDecorators } from './decorator_metadata.js';
 import { defineFilter, type FilterSpec } from './filter_spec.js';
@@ -93,7 +94,14 @@ export function dispatchKeys(cls: FilterClass): ReadonlySet<string> {
   const bound = explicitBindings(cls).methods;
   const keys = new Set<string>();
   let proto = cls.prototype as object | null;
-  while (proto !== null && proto !== BaseModelFilter.prototype && proto !== Object.prototype) {
+  // Stop at either base: members the bases themselves define (`input`, `setup`) are machinery,
+  // never dispatchable keys — for model and custom filters alike.
+  while (
+    proto !== null &&
+    proto !== BaseModelFilter.prototype &&
+    proto !== BaseFilter.prototype &&
+    proto !== Object.prototype
+  ) {
     for (const name of Object.getOwnPropertyNames(proto)) {
       if (RESERVED_METHODS.has(name) || blacklist.has(name) || bound.has(name)) continue;
       if (name.startsWith('$') || name.startsWith('_')) continue;

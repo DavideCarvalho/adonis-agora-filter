@@ -1,6 +1,6 @@
 import { escapeLike } from './escape-like.js';
 import type { ColumnFilter, FilterOperator } from './operators.js';
-import type { ComputedContext, ComputedSource, SortItem } from './types.js';
+import type { ComputedContext, ComputedSource, GroupByCountOptions, SortItem } from './types.js';
 import { normalizeOperator } from './validate-column-filter.js';
 
 /**
@@ -46,6 +46,27 @@ export interface QueryBuilderLike {
   whereILike(column: string, value: string): QueryBuilderLike;
   orWhereILike(column: string, value: string): QueryBuilderLike;
   orderBy(column: string, direction: 'asc' | 'desc'): QueryBuilderLike;
+  /**
+   * Project columns — Lucid's `select`. Optional on the seam: only aggregations need it
+   * (entity-row listings select whole rows), so a minimal custom implementation can omit it
+   * until it serves a `groupByCount`.
+   */
+  select?: (...columns: string[]) => unknown;
+  /**
+   * Aggregate rows — Lucid's `count`. Optional, same reason as {@link select}: only the
+   * group-by-count aggregation calls it, with a `'* AS count'`-style argument.
+   */
+  count?: (column: string) => unknown;
+  /**
+   * Group rows — Lucid's `groupBy`. Optional, same reason: only the group-by-count aggregation
+   * calls it.
+   */
+  groupBy?: (...columns: string[]) => unknown;
+  /**
+   * Skip rows — Lucid's `offset`. Optional: entity-row pagination goes through Lucid's own
+   * `paginate`, so only the group-by-count aggregation pages with limit/offset directly.
+   */
+  offset?: (n: number) => unknown;
   /**
    * Add a raw SQL predicate with positional bindings — Lucid's `whereRaw`. The
    * escape hatch for constraints no structured method can express, used here for
@@ -441,6 +462,42 @@ export function applySort(qb: QueryBuilderLike, sorts: SortItem[]): void {
 export function applyDistinct(qb: QueryBuilderLike, columns: string[]): void {
   if (columns.length === 0) return;
   qb.distinct(...columns);
+}
+
+/**
+ * Terminal group-by-count aggregation over one column:
+ * `SELECT <col> AS value, COUNT(*) AS count … GROUP BY <col>`, most groups first —
+ * what populates a filter dropdown. `column` must already be validated (allow-listed): it is
+ * interpolated as an identifier, while every client VALUE rides a positional binding.
+ *
+ * Fixed ordering (count desc, value asc) is load-bearing, not cosmetic: the answer is pageable,
+ * and paging an unordered listing repeats and skips rows.
+ *
+ * Requires a builder carrying the optional aggregation seam (`select`/`count`/`groupBy`/`offset`);
+ * throws a plain `Error` naming the missing method otherwise, so a minimal custom implementation
+ * fails loudly instead of silently returning entity rows.
+ */
+export function applyGroupByCount(
+  qb: QueryBuilderLike,
+  column: string,
+  opts: GroupByCountOptions = {},
+): void {
+  if (!qb.select || !qb.count || !qb.groupBy || !qb.offset) {
+    throw new Error(
+      'groupByCount needs a builder with select/count/groupBy/offset — the active one does not implement the aggregation seam.',
+    );
+  }
+  qb.select(`${column} AS value`);
+  qb.count('* AS count');
+  const needle = opts.search?.trim();
+  if (needle) {
+    qb.whereRaw(`LOWER(??) LIKE ?`, [column, `%${escapeLike(needle.toLowerCase())}%`]);
+  }
+  qb.groupBy(column);
+  qb.orderBy('count', 'desc');
+  qb.orderBy(column, 'asc');
+  if (opts.limit !== undefined) qb.limit(Math.max(0, opts.limit));
+  if (opts.offset !== undefined) qb.offset(Math.max(0, opts.offset));
 }
 
 /**

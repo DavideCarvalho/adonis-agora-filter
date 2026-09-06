@@ -171,3 +171,32 @@ describe('FilterQueryBuilder.toQueryString()', () => {
     expect(qs).toContain('search=fleet');
   });
 });
+
+describe('FilterQueryBuilder.groupByCount()', () => {
+  it('emits the field with bounds and search', () => {
+    const qs = filterQuery()
+      .where('tenant', 'acme')
+      .groupByCount('tag', { limit: 20, offset: 5, search: 'et' })
+      .toQueryString();
+    expect(qs).toBe(
+      'filter%5Btenant%5D=acme&groupByCount%5Bfield%5D=tag&groupByCount%5Blimit%5D=20&groupByCount%5Boffset%5D=5&groupByCount%5Bsearch%5D=et',
+    );
+  });
+
+  it('emits a bare field with no bounds', () => {
+    const qs = filterQuery().groupByCount('tag').toQueryString();
+    expect(qs).toBe('groupByCount%5Bfield%5D=tag');
+  });
+
+  it('appears in build() for POST bodies', () => {
+    const built = filterQuery().where('a', 'b').groupByCount('tag', { limit: 1 }).build();
+    expect(built.groupByCount).toEqual({ field: 'tag', limit: 1 });
+  });
+
+  it('clear() drops the aggregation', () => {
+    const builder = filterQuery().groupByCount('tag');
+    builder.clear();
+    expect(builder.toQueryString()).toBe('');
+    expect(builder.build().groupByCount).toBeUndefined();
+  });
+});

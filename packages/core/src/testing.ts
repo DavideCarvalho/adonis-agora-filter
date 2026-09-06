@@ -98,6 +98,22 @@ export class MockQueryBuilder implements QueryBuilderLike {
   limit(count: number): this {
     return this.record('limit', count);
   }
+  /** Record a row skip: `args` are `[n]`. Only the group-by-count aggregation pages this way. */
+  offset(n: number): this {
+    return this.record('offset', n);
+  }
+  /** Record a projection: `args` are the select expressions (aggregates included). */
+  select(...columns: string[]): this {
+    return this.record('select', ...columns);
+  }
+  /** Record an aggregation: `args` are `[column]` (e.g. `'* AS count'`). */
+  count(column: string): this {
+    return this.record('count', column);
+  }
+  /** Record a grouping: `args` are the group columns. */
+  groupBy(...columns: string[]): this {
+    return this.record('groupBy', ...columns);
+  }
   /** Record a DISTINCT projection: `args` are the distinct column names. */
   distinct(...columns: string[]): this {
     return this.record('distinct', ...columns);

@@ -125,6 +125,14 @@ describe('filterQueryTyped', () => {
     expect(result.distinct).toEqual(['status']);
   });
 
+  it('groupByCount() accepts a valid field and builds', () => {
+    const q = filterQueryTyped<UserFields>().where('status', 'active').groupByCount('status', {
+      limit: 20,
+    });
+    const result = q.build();
+    expect(result.groupByCount).toEqual({ field: 'status', limit: 20 });
+  });
+
   it('clear resets everything', () => {
     const q = filterQueryTyped<UserFields>()
       .equals('name', 'Al')

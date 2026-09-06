@@ -128,6 +128,10 @@ export interface TypedFilterQueryBuilder<
 
   distinct(...fields: Fields[]): this;
 
+  // ─── Group by count (typed) ─────────────────────────────────────────────
+
+  groupByCount(field: Fields, opts?: { limit?: number; offset?: number; search?: string }): this;
+
   // ─── Non-field methods (passthrough) ────────────────────────────────────
 
   include(...relations: string[]): this;

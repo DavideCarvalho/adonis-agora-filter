@@ -69,6 +69,28 @@ export type InputSource =
 export type InputNormalizer = 'camelCase' | 'snakeCase' | ((key: string) => string);
 
 /**
+ * A group-by-count aggregation request: the distinct values of `field` with counts, over the
+ * rows the active filters select. `limit` bounds the rows (highest count first — tag cardinality
+ * grows with the data, so the unbounded answer is a listing); `offset` pages that bound;
+ * `search` narrows to values containing the text, server-side, so a rare value outside the first
+ * page stays reachable by typing.
+ */
+export interface GroupByCountRequest {
+  field: string;
+  limit?: number | undefined;
+  offset?: number | undefined;
+  search?: string | undefined;
+}
+
+/** Bounds for a group-by-count answer: how many group rows come back, from where, matching what. */
+export interface GroupByCountOptions {
+  limit?: number | undefined;
+  offset?: number | undefined;
+  /** Narrow to groups whose value contains this text (case-insensitive). */
+  search?: string | undefined;
+}
+
+/**
  * The parsed, structured input a {@link applyFilter} call consumes — produced by
  * {@link parseFilterRequest} from a request query string, or built directly.
  */
@@ -95,6 +117,13 @@ export interface FilterInput {
   page?: number;
   /** Page size for offset pagination. */
   size?: number;
+  /**
+   * A group-by-count aggregation replacing entity-row output: the distinct values of one field
+   * with counts — what populates a filter dropdown. Parsed from the `groupByCount[field]`,
+   * `groupByCount[limit]`, `groupByCount[offset]` and `groupByCount[search]` params the client
+   * builder emits.
+   */
+  groupByCount?: GroupByCountRequest;
   /**
    * A query embedding to rank rows by pgvector *similarity* (distinct from the
    * text `search` above). Applied only when the policy declares a similarity

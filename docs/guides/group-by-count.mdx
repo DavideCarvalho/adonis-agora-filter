@@ -1,0 +1,68 @@
+---
+title: Group By Count
+icon: ChartBar
+description: The pickers' query — distinct values of one field with counts, over Lucid GROUP BY or a custom adapter.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+A filter dropdown should list what the data actually contains, not ask the operator to type blind:
+the distinct values of one field with counts, over the rows the active filters select. That is
+`groupByCount` — the terminal aggregation behind value pickers — over Lucid models and custom
+backends alike.
+
+## The client
+
+```ts
+import { filterQuery } from '@adonis-agora/filter-client'
+
+const qs = filterQuery()
+  .where('tenant', 'acme')
+  .groupByCount('tag', { limit: 20 })
+  .toQueryString()
+// filter[tenant]=acme&groupByCount[field]=tag&groupByCount[limit]=20
+```
+
+The scope rides the usual `where`/`search`; the axis and its bounds ride `groupByCount[field]`,
+`groupByCount[limit]`, `groupByCount[offset]`, `groupByCount[search]`. `limit` bounds the groups
+(highest count first — tag cardinality grows with the data, so the unbounded answer is a listing);
+`offset` pages that bound; `search` narrows to values containing the text, server-side, so a rare
+value outside the first page stays reachable by typing.
+
+## Over Lucid
+
+```ts title="app/controllers/users_controller.ts"
+import { groupByCountFromRequest } from '@adonis-agora/filter'
+
+export default class UsersController {
+  async facets(ctx: HttpContext) {
+    return groupByCountFromRequest(User.query(), UserFilter, ctx)
+  }
+}
+```
+
+The server scope (tenant, default filters) plus the request filters and search apply on the
+builder, then a `GROUP BY` replaces entity-row output — most groups first, so the answer is
+pageable. The grouping field clears the same allow-list `sort` answers to; anything else is a
+`400`, never SQL. Listing sort/pagination do not apply: this mode replaces entity rows.
+
+## Over a custom backend
+
+Pass a draft and an adapter instead of a builder — the [custom filter](/docs/filter/guides/custom-backends)
+narrows the draft over the same scope, then the adapter counts it:
+
+```ts
+const rows = await groupByCountFromRequest(draft, RunFilter, ctx, {
+  adapter: {
+    async groupByCount(field, draft, opts) {
+      return engine.runValueFacets(axisFor(field), draft.facetQuery(), opts)
+    },
+  },
+})
+```
+
+<Callout type="info">
+Ordering is fixed (count desc, value asc) on every path, because a pageable answer over an
+unordered listing repeats and skips rows. The Lucid execution pins it in SQL; a custom adapter
+is expected to return the same order.
+</Callout>

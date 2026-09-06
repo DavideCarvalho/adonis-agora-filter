@@ -1,4 +1,5 @@
 import type { LucidModelLike } from './aggregate.js';
+import { BaseFilter } from './base_filter.js';
 import type { FieldAliases } from './field_aliases.js';
 import type {
   FilterableInput,
@@ -11,7 +12,6 @@ import type { QueryBuilderLike } from './lucid_adapter.js';
 import type { ColumnFilter } from './operators.js';
 import type {
   ComputedFields,
-  FilterInput,
   FullTextSearchConfig,
   SortItem,
   VectorSimilarityConfig,
@@ -54,22 +54,9 @@ import type {
  * }
  * ```
  */
-export abstract class BaseModelFilter<Q extends QueryBuilderLike = QueryBuilderLike> {
-  /**
-   * The query builder being filtered — the one the caller created. Methods mutate it directly;
-   * nothing here constructs or executes a query.
-   */
-  declare $query: Q;
-
-  /** The raw decoded request input the dispatch reads (query string, or the body on a POST). */
-  declare $input: Readonly<Record<string, unknown>>;
-
-  /** The parsed input — filters, sort, search, pagination — after the wire format is read. */
-  declare $parsed: FilterInput;
-
-  /** The request context handed to the call (a real `HttpContext` in an AdonisJS app). */
-  declare $ctx: unknown;
-
+export abstract class BaseModelFilter<
+  Q extends QueryBuilderLike = QueryBuilderLike,
+> extends BaseFilter<Q> {
   // ── the declarative half: everything a plain column needs, without writing a method ──────────
 
   /** The owning Lucid model. Unlocks to-many aggregates and supplies the root table name. */
@@ -117,19 +104,4 @@ export abstract class BaseModelFilter<Q extends QueryBuilderLike = QueryBuilderL
   static dropId?: boolean;
   /** Match `snake_case` input keys against camelCase methods (`first_name` → `firstName`). Default true. */
   static camelCase?: boolean;
-
-  /**
-   * Runs on every filter call, before the request's own filters — the place for a scope the
-   * client cannot relax (a tenant, a soft-delete guard, an ownership check).
-   */
-  setup?(): void | Promise<void>;
-
-  /** The whole raw input, one key of it, or a fallback when the key is absent. */
-  input(): Readonly<Record<string, unknown>>;
-  input(key: string): unknown;
-  input(key: string, fallback: unknown): unknown;
-  input(key?: string, fallback?: unknown): unknown {
-    if (key === undefined) return this.$input;
-    return Object.hasOwn(this.$input, key) ? this.$input[key] : fallback;
-  }
 }

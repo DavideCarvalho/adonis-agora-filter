@@ -8,7 +8,12 @@ export type {
   ValueAt,
   ValueForOp,
 } from './field-types.js';
-export type { FilterQueryResult, OffsetPagination, SortItem } from './filter-query-builder.js';
+export type {
+  FilterQueryResult,
+  GroupByCountSpec,
+  OffsetPagination,
+  SortItem,
+} from './filter-query-builder.js';
 export { FilterQueryBuilder, filterQuery } from './filter-query-builder.js';
 export { columnFiltersToQueryString, flatObjectToQueryString } from './to-query-string.js';
 export type { TypedFilterQuery } from './typed-filter-query.js';

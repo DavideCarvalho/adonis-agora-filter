@@ -176,7 +176,7 @@ function prune(
  * {@link applyFilter} (offset) and {@link applyCursor} (keyset) so the security
  * boundary is identical for either pagination style.
  */
-function applyFilterConditions(
+export function applyFilterConditions(
   qb: QueryBuilderLike,
   input: FilterInput,
   config: FilterConfig,
@@ -277,7 +277,7 @@ function isProjectable(field: string, config: FilterConfig): boolean {
  * not an allow-list problem, so pointing the reader at `allowed` would send them
  * to edit the wrong thing.
  */
-function resolveSafeDistinct(fields: string[], config: FilterConfig): string[] {
+export function resolveSafeDistinct(fields: string[], config: FilterConfig): string[] {
   const throwOnInvalid = config.throwOnInvalid ?? false;
   const aliased = config.aliases
     ? remapDistinctAliases(fields, config.aliases as NonNullable<typeof config.aliases>)
