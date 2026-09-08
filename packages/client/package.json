@@ -47,10 +47,10 @@
     }
   },
   "devDependencies": {
-    "@tanstack/intent": "^0.3.7",
+    "@tanstack/intent": "^0.4.0",
     "@tanstack/table-core": "9.2.4",
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "5.0.0"
   },
   "engines": {
     "node": ">=20.6.0"
