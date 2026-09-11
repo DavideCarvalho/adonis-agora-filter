@@ -194,7 +194,7 @@ importers:
   packages/client:
     devDependencies:
       '@tanstack/intent':
-        specifier: ^0.4.0
+        specifier: 0.4.0
         version: 0.4.0
       '@tanstack/table-core':
         specifier: 9.2.4
@@ -218,7 +218,7 @@ importers:
         specifier: 22.4.2
         version: 22.4.2(@adonisjs/assembler@8.5.1(typescript@7.0.2))(@adonisjs/core@7.5.0(@adonisjs/assembler@8.5.1(typescript@7.0.2))(supports-color@10.2.2)(youch@4.1.1))(luxon@3.7.2)(pg@8.23.0)(supports-color@10.2.2)
       '@tanstack/intent':
-        specifier: ^0.4.0
+        specifier: 0.4.0
         version: 0.4.0
       '@types/luxon':
         specifier: 3.7.5
