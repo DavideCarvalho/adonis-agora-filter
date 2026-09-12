@@ -8,6 +8,20 @@
     "url": "git+https://github.com/DavideCarvalho/adonis-agora-filter.git",
     "directory": "packages/client"
   },
+  "homepage": "https://davidecarvalho.github.io/agora/docs/filter",
+  "bugs": {
+    "url": "https://github.com/DavideCarvalho/adonis-agora-filter/issues"
+  },
+  "keywords": [
+    "adonisjs",
+    "adonis",
+    "filter",
+    "query",
+    "client",
+    "builder",
+    "agora",
+    "tanstack-intent"
+  ],
   "author": "Davi Carvalho <davi@goflip.ai>",
   "type": "module",
   "main": "./dist/index.js",
@@ -54,15 +68,5 @@
   },
   "engines": {
     "node": ">=20.6.0"
-  },
-  "keywords": [
-    "adonisjs",
-    "adonis",
-    "filter",
-    "query",
-    "client",
-    "builder",
-    "agora",
-    "tanstack-intent"
-  ]
+  }
 }
