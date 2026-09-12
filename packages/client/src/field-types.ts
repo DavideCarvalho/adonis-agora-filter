@@ -1,13 +1,10 @@
 import type { FilterOperator } from './types.js';
 
 /**
- * Canonical classification used by codegen + the runtime adapters. Mirrors EntityFieldInfo['type'].
- *
- * NOT to be unified with `FilterFieldTypeHint` (core `@FilterFor` decorator): that hint is a
- * codegen *authoring* surface — it uses `'Date'` to mirror the TS type name and accepts a
- * `readonly string[]` of enum literals, whereas `FieldTypeKind` is this layer's lowercase
- * *classifier output* (`'date'`, plus `'json'`/`'unknown'` buckets the hint has no concept of).
- * Different layers, different purposes; keep them separate.
+ * Canonical classification of a field's value type — mirrors the core package's
+ * `FilterFieldKind` but re-declared here to keep this package zero-dependency,
+ * for the same reason as {@link FilterOperator}. The two unions must stay
+ * member-for-member identical.
  */
 export type FieldTypeKind = 'string' | 'number' | 'boolean' | 'date' | 'json' | 'unknown';
 
