@@ -1,5 +1,11 @@
 # @adonis-agora/filter-client
 
+## 0.3.1
+
+### Patch Changes
+
+- [`a39ba3d`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/a39ba3d013d10ad972b1ec9da36be448207947ef) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Correct the `FieldTypeKind` docblock: it referenced an `EntityFieldInfo` type and a `FilterFieldTypeHint` hint on a `@FilterFor` decorator, none of which exist in this repo. The union in fact mirrors core's `FilterFieldKind` member-for-member.
+
 ## 0.3.0
 
 ### Minor Changes
