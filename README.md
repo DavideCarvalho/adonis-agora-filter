@@ -52,6 +52,20 @@ and a `make:filter-client` codegen. Everything is built on
 the structural `QueryBuilderLike` adapter, so Lucid stays a peer, not a hard
 dependency.
 
+Lists that are not a table — rows merged from several sources, static catalogs,
+remote API data — run the same input through `@adonis-agora/filter/in-memory`: an
+in-memory `QueryBuilderLike` over a declared collection (field types, virtual
+fields, relations), with the same operators and SQL semantics:
+
+```ts
+import { defineCollection, filterInMemory } from '@adonis-agora/filter/in-memory'
+
+const users = defineCollection<UserRow>({
+  fields: { name: 'string', age: 'number', tags: 'string[]' },
+})
+return filterInMemory(users, rows, parseFilterRequest(ctx.request.qs()), { allowed: ['name', 'age'] })
+```
+
 See the [documentation](./docs) for the full surface.
 
 ## License

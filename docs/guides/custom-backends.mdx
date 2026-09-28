@@ -79,3 +79,9 @@ await applyCustomFilter(draft, RunFilter, { request: { qs: () => ({ tag: ['a', '
 
 assert.deepEqual(draft.query, { tags: ['a', 'b'] })
 ```
+
+<Callout type="info">
+If the rows are already in memory (merged from several sources, a static catalog, a remote page),
+you do not need a draft at all: [In-Memory Lists](/docs/filter/guides/in-memory) evaluates the full
+declarative surface — operators, relations, search, sort, pagination, distinct — over an array.
+</Callout>
