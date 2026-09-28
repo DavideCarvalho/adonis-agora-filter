@@ -38,6 +38,11 @@
       "import": "./dist/src/testing.js",
       "default": "./dist/src/testing.js"
     },
+    "./in-memory": {
+      "types": "./dist/src/in_memory.d.ts",
+      "import": "./dist/src/in_memory.js",
+      "default": "./dist/src/in_memory.js"
+    },
     "./configure": {
       "types": "./dist/configure.d.ts",
       "import": "./dist/configure.js",

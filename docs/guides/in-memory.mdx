@@ -1,0 +1,118 @@
+---
+title: In-Memory Lists
+icon: MemoryStick
+description: Run the same filter/sort/search/paginate/distinct input against a plain JS array — the runner drives an in-memory query builder instead of Lucid.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Not every list is a table. Rows assembled from several sources, a static catalog, a page fetched
+from a remote API — they should still accept the same query string, the same operators and the
+same `400`s as a model listing. `@adonis-agora/filter/in-memory` ships a `QueryBuilderLike` that
+evaluates over an array, so the runner you already use (parsing, aliases, validation, the
+allow-list, value coercion, `defineFilter` specs) drives it unchanged — the adapter only
+evaluates.
+
+## Declare a collection
+
+```ts title="app/lists/users.ts"
+import { defineCollection } from '@adonis-agora/filter/in-memory'
+
+export const posts = defineCollection<Post>({
+  fields: { id: 'number', title: 'string', published: 'boolean' },
+})
+
+export const users = defineCollection<UserRow>({
+  fields: {
+    id: 'number',
+    name: 'string',
+    age: 'number',
+    active: 'boolean',
+    createdAt: 'date',
+    tags: 'string[]',
+    // a virtual field — the in-memory counterpart of a policy's `computed`
+    fullName: { type: 'string', get: (u) => `${u.first} ${u.last}` },
+  },
+  primaryKey: 'id', // the cursor tiebreaker (default 'id')
+  relations: {
+    posts: { kind: 'one-to-many', target: () => posts, get: (u) => u.posts },
+    team: { kind: 'many-to-one', target: () => teams, get: (u) => teamById.get(u.teamId) },
+  },
+})
+```
+
+Declared types decide how a filter value compares: `'3'` equals `3` on a `number` field,
+`'true'`/`'1'` equal `true` on a `boolean`, ISO strings compare as instants on a `date` (a
+`Date`, an ISO string, epoch millis or a Luxon `DateTime` in the row all work). An undeclared field
+is read as an own property and compared by the kind its value has.
+
+## Run a request against it
+
+Hand `users.query(rows)` to any runner entry point, exactly where a Lucid query would go:
+
+```ts title="app/controllers/users_controller.ts"
+import { applyFilterFromRequest, defineFilter } from '@adonis-agora/filter'
+
+const userFilter = defineFilter({
+  filterable: users.filterable, // the colocated field → kind map
+  searchable: ['name'],
+  relations: { posts: { filterable: ['title'] } },
+})
+
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const rows = await assembleUserRows() // merged from several sources
+    const query = users.query(rows)
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+    return query.paginate(page, size) // { data, meta: { total, perPage, currentPage, lastPage, firstPage } }
+  }
+}
+```
+
+Or in one call, with a plain `FilterConfig`:
+
+```ts
+import { parseFilterRequest } from '@adonis-agora/filter'
+import { cursorInMemory, filterInMemory } from '@adonis-agora/filter/in-memory'
+
+const input = parseFilterRequest(ctx.request.qs())
+const page = filterInMemory(users, rows, input, {
+  allowed: ['name', 'age', 'posts.title'],
+  searchable: ['name'],
+  fieldTypes: users.fieldTypes,
+})
+
+// keyset pages — the primary key defaults to the collection's
+const cursorPage = cursorInMemory(users, rows, { ...input, first: 20, after }, { allowed: '*' })
+```
+
+`groupByCountFromRequest(users.query(rows), userFilter, ctx)` works too — the builder is thenable
+like a Lucid query. An array-typed grouping field is unnested, one group per element, which is
+what a tag picker wants.
+
+## Semantics
+
+The builder evaluates what the Lucid adapter would have sent to Postgres, so the two agree:
+
+| | In memory, as in SQL |
+|---|---|
+| `equals` | case-sensitive `=` |
+| `contains` / `iContains` / `startsWith` / `endsWith` | `ILIKE` — case-insensitive, `%`/`_` in the value are literal |
+| `notEquals` / `notIn` / `notBetween` on a NULL value | false (three-valued logic) |
+| `notIn` over a list holding `null` | matches nothing |
+| `isEmpty` / `isNotEmpty` | `= ''` / `<> ''` — NULL is neither |
+| LIKE on a non-text field | matches the stringified value |
+| `posts.title` (to-many) | `EXISTS` — at least one related row matches |
+| `team.name` (to-one) | follows the relation; also sortable |
+| `search` | case-insensitive OR across `searchable` |
+| sort | NULLS LAST ascending, NULLS FIRST descending; strings in code-unit (`"C"` collation) order |
+| array fields (`'string[]'`, …) | a scalar operator matches when **any** element does; a negated one when **no** element does |
+
+<Callout type="warn">
+Raw SQL has no in-memory meaning. A policy's `computed` fields, `fullText` and `vectorSimilarity`
+throw `InMemoryQueryError` — declare a virtual field on the collection instead of `computed`. A
+dotted path through a relation the collection does not declare throws too.
+</Callout>
+
+Everything is evaluated over the whole array on each call — fine for the hundreds-to-thousands of
+rows these lists hold, not a substitute for a database index.

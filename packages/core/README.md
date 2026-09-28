@@ -50,6 +50,21 @@ AND/OR composition. The `allowed`/`sortable`/`searchable` lists are the security
 boundary. The Lucid binding is structural (`QueryBuilderLike`) so any Lucid query
 builder works and the adapter is unit-testable.
 
+### In-memory lists
+
+`@adonis-agora/filter/in-memory` runs the same input against a plain array — an
+in-memory `QueryBuilderLike` the runner drives exactly like a Lucid query:
+
+```ts
+import { defineCollection, filterInMemory } from '@adonis-agora/filter/in-memory'
+
+const users = defineCollection<UserRow>({
+  fields: { name: 'string', age: 'number', fullName: { type: 'string', get: (u) => u.first + ' ' + u.last } },
+})
+const page = filterInMemory(users, rows, input, { allowed: ['name', 'age', 'fullName'] })
+// { data, meta: { total, perPage, currentPage, lastPage, firstPage } }
+```
+
 See the [repository README](https://github.com/DavideCarvalho/adonis-filter).
 
 ## License

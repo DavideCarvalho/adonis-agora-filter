@@ -8,8 +8,11 @@ description: >
   defaultFilters, defaultSort, defaultSize/maxSize), the optional provider
   macros .applyFilterFromRequest() / .filterPaginate(), wire format parsing
   (filter[field][op]=value, sort=-createdAt, page/size), and input sourcing from
-  query string, POST body, or a nested key. Use when building a filtered list
-  endpoint, wiring a reusable filter policy, or deciding free functions vs macros.
+  query string, POST body, or a nested key, and the in-memory adapter
+  (@adonis-agora/filter/in-memory: defineCollection, filterInMemory,
+  cursorInMemory) for lists that are not a table. Use when building a filtered
+  list endpoint, wiring a reusable filter policy, deciding free functions vs
+  macros, or filtering a plain array with the same wire format.
 metadata:
   type: core
   library: "@adonis-agora/filter"
@@ -21,6 +24,7 @@ sources:
   - "DavideCarvalho/adonis-filter:docs/guides/filter-classes.mdx"
   - "DavideCarvalho/adonis-filter:docs/guides/provider.mdx"
   - "DavideCarvalho/adonis-filter:docs/guides/operators.mdx"
+  - "DavideCarvalho/adonis-filter:docs/guides/in-memory.mdx"
 ---
 
 # Filter basics: parse a request, apply it to a Lucid query
@@ -167,6 +171,34 @@ paginate, run plain `.exec()`, or layer a DISTINCT projection on the same
 filtered query.
 
 Source: `docs/getting-started.mdx`, `docs/guides/filter-classes.mdx`
+
+### 5. Lists that are not a table — the in-memory adapter
+
+Rows merged from several sources, static catalogs and remote API pages take the
+same input through `@adonis-agora/filter/in-memory`. `collection.query(rows)` is a
+`QueryBuilderLike`, so every runner entry point (and `defineFilter` specs) drives
+it unchanged; the builder evaluates the calls with Postgres semantics (ILIKE,
+three-valued NULLs, NULLS LAST asc / FIRST desc, EXISTS for to-many paths).
+
+```typescript
+import { defineCollection, filterInMemory } from '@adonis-agora/filter/in-memory'
+
+const users = defineCollection<UserRow>({
+  fields: { name: 'string', age: 'number', tags: 'string[]', fullName: { type: 'string', get: (u) => `${u.first} ${u.last}` } },
+  relations: { posts: { kind: 'one-to-many', target: () => posts, get: (u) => u.posts } },
+})
+
+const page = filterInMemory(users, rows, parseFilterRequest(ctx.request.qs()), {
+  allowed: ['name', 'age', 'fullName', 'posts.title'],
+  fieldTypes: users.fieldTypes,
+})
+// or: const q = users.query(rows); const { page, size } = applyFilterFromRequest(q, spec, ctx); q.paginate(page, size)
+```
+
+Policy `computed`, `fullText` and `vectorSimilarity` are SQL-only and throw
+`InMemoryQueryError` there — declare a virtual field on the collection instead.
+
+Source: `docs/guides/in-memory.mdx`
 
 ## Common mistakes
 
