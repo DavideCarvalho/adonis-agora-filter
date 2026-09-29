@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 0.10.0
+
+### Minor Changes
+
+- [#67](https://github.com/DavideCarvalho/adonis-agora-filter/pull/67) [`1dd11c3`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/1dd11c3563cd015d27627808cc3e23830ed4be50) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - In-memory adapter at `@adonis-agora/filter/in-memory`: `defineCollection({ fields, primaryKey, relations })` declares a row source (field types incl. `'string[]'`-style arrays, virtual fields, to-one/to-many relations), and `collection.query(rows)` is a `QueryBuilderLike` the existing runner drives unchanged — `applyFilter`, `applyCursor`, `applyFilterFromRequest`, `applyCursorFromRequest` and `groupByCountFromRequest` all work over a plain array with the same parsing, allow-listing and coercion. Evaluation mirrors the SQL the Lucid adapter emits (ILIKE, three-valued NULL logic, NULLS LAST asc / FIRST desc, EXISTS for to-many paths). `filterInMemory` / `cursorInMemory` do it in one call; `InMemoryQueryError` is thrown for SQL-only features (`computed`, `fullText`, `vectorSimilarity`).
+
 ## 0.9.0
 
 ### Minor Changes
