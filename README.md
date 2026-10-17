@@ -1,6 +1,6 @@
 # `@adonis-agora/filter`
 
-[![npm version](https://img.shields.io/npm/v/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![npm downloads](https://img.shields.io/npm/dm/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![CI](https://github.com/DavideCarvalho/adonis-filter/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/DavideCarvalho/adonis-filter/actions/workflows/ci.yml) [![license](https://img.shields.io/npm/l/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter)
+[![npm version](https://img.shields.io/npm/v/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![npm downloads](https://img.shields.io/npm/dm/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![CI](https://github.com/DavideCarvalho/adonis-agora-filter/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/DavideCarvalho/adonis-agora-filter/actions/workflows/ci.yml) [![license](https://img.shields.io/npm/l/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter)
 
 > Query filtering, sorting, and pagination for **AdonisJS** — Spatie/JSON:API
 > style. Part of the [Agora](https://github.com/DavideCarvalho) ecosystem.
