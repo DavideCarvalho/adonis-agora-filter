@@ -1,5 +1,7 @@
 # `@adonis-agora/filter`
 
+[![npm version](https://img.shields.io/npm/v/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![npm downloads](https://img.shields.io/npm/dm/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![CI](https://github.com/DavideCarvalho/adonis-agora-filter/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/DavideCarvalho/adonis-agora-filter/actions/workflows/ci.yml) [![license](https://img.shields.io/npm/l/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter)
+
 > Query filtering, sorting, and pagination for **AdonisJS** — Spatie/JSON:API
 > style. Part of the [Agora](https://github.com/DavideCarvalho) ecosystem.
 
@@ -7,8 +9,8 @@
 
 | Package | What |
 |---|---|
-| [`@adonis-agora/filter`](./packages/core) | server-side: parse request → apply to a Lucid query under a field allow-list, resolve pagination |
-| [`@adonis-agora/filter-client`](./packages/client) | framework-agnostic client query builder (+ TanStack Table sync) |
+| [`@adonis-agora/filter`](./packages/core) [![npm](https://img.shields.io/npm/v/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) | server-side: parse request → apply to a Lucid query under a field allow-list, resolve pagination |
+| [`@adonis-agora/filter-client`](./packages/client) [![npm](https://img.shields.io/npm/v/@adonis-agora/filter-client)](https://www.npmjs.com/package/@adonis-agora/filter-client) | framework-agnostic client query builder (+ TanStack Table sync) |
 
 ```ts
 // client

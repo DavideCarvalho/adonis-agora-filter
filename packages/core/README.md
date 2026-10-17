@@ -1,5 +1,7 @@
 # `@adonis-agora/filter`
 
+[![npm version](https://img.shields.io/npm/v/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![npm downloads](https://img.shields.io/npm/dm/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter) [![CI](https://github.com/DavideCarvalho/adonis-agora-filter/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/DavideCarvalho/adonis-agora-filter/actions/workflows/ci.yml) [![license](https://img.shields.io/npm/l/@adonis-agora/filter)](https://www.npmjs.com/package/@adonis-agora/filter)
+
 Server-side query filtering, sorting, and pagination for AdonisJS. Parses the
 Spatie/JSON:API query the `@adonis-agora/filter-client` builder emits, applies it to a
 Lucid query through a field allow-list, and resolves offset or keyset (cursor)
