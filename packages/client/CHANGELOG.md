@@ -1,5 +1,11 @@
 # @adonis-agora/filter-client
 
+## 0.4.0
+
+### Minor Changes
+
+- [#105](https://github.com/DavideCarvalho/adonis-agora-filter/pull/105) [`72ff139`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/72ff139e16c9ac05f326d490a997579ac5fb3273) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Drop Node.js 20 and 22: `engines.node` is now `>=24`. Node 20 reached end-of-life on 2026-04-30, and AdonisJS 7, which these packages require as a peer, needs Node 24 or later (`@adonisjs/core` declares `engines.node >=24.0.0`). The supported lines are the ones Node still maintains that AdonisJS 7 accepts: 24 and 26, both tested in CI.
+
 ## 0.3.1
 
 ### Patch Changes
