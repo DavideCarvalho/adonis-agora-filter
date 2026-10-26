@@ -42,7 +42,8 @@ const page = await User.query().filterPaginate(userFilter, ctx)
 ```
 
 `applyFilterFromRequest` returns the query (pagination resolved but not applied);
-`filterPaginate` applies `paginate(page, size)` with the resolved values. The free
+`filterPaginate` pages it with the resolved values, returning Lucid's paginator — it
+reads the page first and skips the `COUNT(*)` when the page comes back short. The free
 functions work without the provider — the macros only add the chainable sugar, so
 `@adonisjs/lucid` stays an optional peer.
 

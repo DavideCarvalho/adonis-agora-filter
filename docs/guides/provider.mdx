@@ -71,6 +71,18 @@ const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
 return query.paginate(page, size)
 ```
 
+The paginator, its meta and the `after:paginate` / `after:fetch` hooks are Lucid's. The difference
+is the order of the two statements: `filterPaginate` reads the page first, and when the page comes
+back shorter than `size` the total is `offset + rows`, so the `COUNT(*)` is skipped. A full page,
+or an empty page past the first, still runs the count. The query falls back to Lucid's own
+`paginate` (count, then page) when the page cannot pin the total:
+
+- the model has a `before:paginate` or `before:fetch` hook, which may change the count query and the page query differently;
+- the select list can change the row count — `distinct` / `distinctOn`, an aggregate, a raw expression, or a `union`;
+- the page or size is not a positive integer, or the builder is not a Lucid model query.
+
+The same applies to `Model.filterPaginate` from the [`Filterable` mixin](/docs/filter/guides/filter-classes).
+
 ## Both macros take a filter class
 
 A [filter class](/docs/filter/guides/filter-classes) is resolved through the IoC container, so that

@@ -158,6 +158,11 @@ return User.query().where('active', true).applyFilterFromRequest(userFilter)
 return User.query().filterPaginate(userFilter)
 ```
 
+`filterPaginate` returns Lucid's paginator but reads the page before the total:
+a page shorter than `size` gives the total as `offset + rows`, so no `COUNT(*)`
+runs. Models with `before:paginate` / `before:fetch` hooks, and `distinct` /
+aggregate / raw / `union` selects, keep Lucid's own `paginate`.
+
 The free `applyFilterFromRequest(query, spec, ctx, options?)` always needs an
 explicit `ctx` — the AsyncLocalStorage fallback exists only in the macro layer.
 
