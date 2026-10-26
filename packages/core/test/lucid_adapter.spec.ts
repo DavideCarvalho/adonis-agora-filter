@@ -23,6 +23,17 @@ describe('lucid adapter — applyColumnFilters', () => {
     expect(call?.args[1]).toBe('%50\\%\\_x%');
   });
 
+  it('translates notContains to a negated ILIKE on the same pattern as contains, excluding NULLs', () => {
+    const qb = new MockQueryBuilder();
+    applyColumnFilters(qb, [{ field: 'name', operator: 'notContains', value: '50%' }]);
+    // The ILIKE runs inside a negated group; no equality test on the raw value is emitted.
+    expect(qb.flatten()).toEqual([
+      { method: 'whereNotNull', args: ['name'] },
+      { method: 'whereILike', args: ['name', '%50\\%%'] },
+    ]);
+    expect(JSON.stringify(qb)).toContain('"method":"whereNot","args":["<group>"]');
+  });
+
   it('translates in / between / null operators', () => {
     const qb = new MockQueryBuilder();
     applyColumnFilters(qb, [
@@ -112,6 +123,50 @@ describe('lucid adapter — applyKeyset', () => {
     // Tier 1: name = 'Bob' AND id > 5
     expect(flat).toContainEqual({ method: 'where', args: ['name', 'Bob'] });
     expect(flat).toContainEqual({ method: 'where', args: ['id', '>', 5] });
+  });
+
+  it('bounds the leading column first, so the index can seek to the boundary', () => {
+    const asc = new MockQueryBuilder();
+    applyKeyset(
+      asc,
+      [
+        { field: 'name', direction: 'asc' },
+        { field: 'id', direction: 'asc' },
+      ],
+      ['Bob', 5],
+    );
+    expect(asc.calls[0]).toEqual({ method: 'where', args: ['name', '>=', 'Bob'] });
+
+    const desc = new MockQueryBuilder();
+    applyKeyset(
+      desc,
+      [
+        { field: 'name', direction: 'desc' },
+        { field: 'id', direction: 'asc' },
+      ],
+      ['Bob', 5],
+    );
+    expect(desc.calls[0]).toEqual({ method: 'where', args: ['name', '<=', 'Bob'] });
+  });
+
+  it('adds no leading bound for a NULL boundary or a single-column keyset', () => {
+    const nullLead = new MockQueryBuilder();
+    applyKeyset(
+      nullLead,
+      [
+        { field: 'name', direction: 'asc' },
+        { field: 'id', direction: 'asc' },
+      ],
+      [null, 5],
+    );
+    expect(nullLead.flatten()).not.toContainEqual(
+      expect.objectContaining({ args: ['name', '>=', null] }),
+    );
+    expect(nullLead.calls).toHaveLength(1);
+
+    const single = new MockQueryBuilder();
+    applyKeyset(single, [{ field: 'id', direction: 'asc' }], [10]);
+    expect(single.calls).toHaveLength(1);
   });
 
   it('no-ops when values do not line up with the keyset', () => {

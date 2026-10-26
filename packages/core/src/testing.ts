@@ -57,8 +57,12 @@ export class MockQueryBuilder implements QueryBuilderLike {
     cb(child);
     return this;
   }
-  whereNot(column: string, value: unknown): this {
-    return this.record('whereNot', column, value);
+  whereNot(callback: (qb: QueryBuilderLike) => void): this;
+  whereNot(column: string, value: unknown): this;
+  // biome-ignore lint/suspicious/noExplicitAny: structural overloads for the mock.
+  whereNot(a: any, b?: any): this {
+    if (typeof a === 'function') return this.group('whereNot', a);
+    return this.record('whereNot', a, b);
   }
   whereIn(column: string, values: unknown[]): this {
     return this.record('whereIn', column, values);

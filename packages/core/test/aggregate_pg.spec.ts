@@ -235,3 +235,73 @@ describe.skipIf(!pgUp)('aggregate injection safety', () => {
     await expect(query).rejects.toThrow();
   });
 });
+
+describe.skipIf(!pgUp)('$count emptiness filters compile to EXISTS against real Postgres', () => {
+  const cases: Array<[string, unknown, string[], string[]]> = [
+    // [operator, value, hasMany authors, manyToMany articles]
+    ['gt', 0, ['Ada', 'Alan', 'Zoe'], ['A1', 'A2']],
+    ['gte', 1, ['Ada', 'Alan', 'Zoe'], ['A1', 'A2']],
+    ['gt', '0', ['Ada', 'Alan', 'Zoe'], ['A1', 'A2']],
+    ['notEquals', 0, ['Ada', 'Alan', 'Zoe'], ['A1', 'A2']],
+    ['equals', 0, ['Grace'], ['A3']],
+    ['lte', 0, ['Grace'], ['A3']],
+    ['lt', 1, ['Grace'], ['A3']],
+    ['equals', '0', ['Grace'], ['A3']],
+  ];
+
+  for (const [operator, value, authors, articles] of cases) {
+    it(`${operator} ${JSON.stringify(value)} — same rows, as an EXISTS test`, async () => {
+      const authorQuery = Author.query();
+      applyFilter(
+        authorQuery as never,
+        {
+          filters: [{ field: 'posts.$count', operator: operator as never, value }],
+          sort: [{ field: 'name', direction: 'asc' }],
+        },
+        {
+          allowed: authorSpec.filterable as string[],
+          computed: authorSpec.computed,
+          table: authorSpec.table,
+        },
+      );
+      expect(authorQuery.toQuery()).toMatch(/EXISTS \(SELECT 1 FROM "agg_posts"/);
+      expect(authorQuery.toQuery()).not.toMatch(/COUNT\(\*\)/);
+      expect((await authorQuery).map((r) => r.name)).toEqual(authors);
+
+      const articleQuery = Article.query();
+      applyFilter(
+        articleQuery as never,
+        {
+          filters: [{ field: 'tags.$count', operator: operator as never, value }],
+          sort: [{ field: 'title', direction: 'asc' }],
+        },
+        {
+          allowed: articleSpec.filterable as string[],
+          computed: articleSpec.computed,
+          table: articleSpec.table,
+        },
+      );
+      expect(articleQuery.toQuery()).toMatch(/EXISTS \(SELECT 1 FROM "agg_article_tag"/);
+      expect((await articleQuery).map((r) => r.title)).toEqual(articles);
+    });
+  }
+
+  it('any other comparison keeps the counting subquery', async () => {
+    const query = Author.query();
+    applyFilter(
+      query as never,
+      {
+        filters: [{ field: 'posts.$count', operator: 'gte', value: 2 }],
+        sort: [{ field: 'name', direction: 'asc' }],
+      },
+      {
+        allowed: authorSpec.filterable as string[],
+        computed: authorSpec.computed,
+        table: authorSpec.table,
+      },
+    );
+    expect(query.toQuery()).toMatch(/COUNT\(\*\)/);
+    expect(query.toQuery()).not.toMatch(/EXISTS/);
+    expect((await query).map((r) => r.name)).toEqual(['Ada']);
+  });
+});

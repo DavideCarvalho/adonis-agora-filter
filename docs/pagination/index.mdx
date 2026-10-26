@@ -94,7 +94,7 @@ export default class AuditLogsController {
 **Keyset.** The effective (allow-listed) sort plus the primary-key tiebreaker forms the keyset. The tiebreaker is appended only if not already present, inheriting the last sort column's direction so the ordering stays monotonic — a correct row-value comparison requires it.
 </Step>
 <Step>
-**Seek.** A supplied `after`/`before` cursor is decoded to the boundary row's keyset values and applied as a portable row-value seek predicate (an "OR of AND tiers" expansion that works across SQL dialects). A malformed cursor is ignored, not fatal.
+**Seek.** A supplied `after`/`before` cursor is decoded to the boundary row's keyset values and applied as a portable row-value seek predicate (an "OR of AND tiers" expansion that works across SQL dialects, preceded by the redundant `c0 >= v0` bound — `<=` for a `desc` lead — that lets the database seek its index to the boundary). A malformed cursor is ignored, not fatal.
 </Step>
 <Step>
 **Fetch + 1.** The builder is ordered and limited to `size + 1` — one extra row so `buildCursorPage` can detect whether a further page exists.

@@ -42,10 +42,10 @@ The operator list is exported as `FILTER_OPERATORS` and the alias map as `OPERAT
 | `iContains` | `whereILike(field, '%v%')` | `%value%` | `{ field: 'email', operator: 'iContains', value: 'ACME' }` |
 | `startsWith` | `whereILike(field, 'v%')` | `value%` | `{ field: 'name', operator: 'startsWith', value: 'A' }` |
 | `endsWith` | `whereILike(field, '%v')` | `%value` | `{ field: 'email', operator: 'endsWith', value: '.com' }` |
-| `notContains` | `whereNot(field, value)` + `whereNotNull(field)` | scalar | `{ field: 'name', operator: 'notContains', value: 'test' }` |
+| `notContains` | `whereNotNull(field)` + `whereNot((q) => q.whereILike(field, '%v%'))` | `%value%` | `{ field: 'name', operator: 'notContains', value: 'test' }` |
 
 <Callout type="info">
-`contains` and `iContains` are equivalent in this adapter — both compile to `whereILike`, which is case-insensitive on every dialect Lucid supports. `notContains` is implemented as `whereNot(field, value) AND field IS NOT NULL` (so NULL rows are excluded), not as a negated LIKE.
+`contains` and `iContains` are equivalent in this adapter — both compile to `whereILike`, which is case-insensitive on every dialect Lucid supports. `notContains` is the negation of `contains` — `field IS NOT NULL AND NOT (field ILIKE '%v%')`, with the same case-insensitivity — and excludes NULL rows.
 </Callout>
 
 ### Array

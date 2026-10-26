@@ -36,6 +36,8 @@ export interface QueryBuilderLike {
    */
   // biome-ignore lint/suspicious/noExplicitAny: see above — `string` here makes every real Lucid builder fail to satisfy this interface. Guarded by test/types/lucid_compat.types.ts.
   whereHas(relation: any, callback: (qb: QueryBuilderLike) => void): QueryBuilderLike;
+  /** Negate a grouped sub-condition — Lucid's `whereNot(callback)`, compiling to `NOT (...)`. */
+  whereNot(callback: (qb: QueryBuilderLike) => void): QueryBuilderLike;
   whereNot(column: string, value: unknown): QueryBuilderLike;
   whereIn(column: string, values: unknown[]): QueryBuilderLike;
   whereNotIn(column: string, values: unknown[]): QueryBuilderLike;
@@ -367,7 +369,11 @@ function applyLeaf(qb: QueryBuilderLike, field: string, operator: FilterOperator
       qb.whereILike(field, like(value, 'endsWith'));
       break;
     case 'notContains':
-      qb.where((sub) => sub.whereNot(field, value).whereNotNull(field));
+      qb.where((sub) =>
+        sub
+          .whereNotNull(field)
+          .whereNot((inner) => inner.whereILike(field, like(value, 'contains'))),
+      );
       break;
     case 'gt':
       qb.where(field, '>', value);
@@ -637,9 +643,20 @@ export function applyComputedSort(
  * predicate is wrapped in one AND-group so it composes with any existing
  * `where` conditions. A no-op when the keyset is empty or `values` does not line
  * up positionally with it.
+ *
+ * With more than one column, the group is preceded by the bound every tier
+ * already implies, `c0 >= v0` (`<=` for `desc`): Postgres cannot derive an index
+ * range from the OR form alone and would scan from the start of the index. The
+ * bound is skipped when `v0` is null, where the OR form matches no `c0 > NULL`
+ * tier and a `>= NULL` bound would wrongly match nothing.
  */
 export function applyKeyset(qb: QueryBuilderLike, keyset: SortItem[], values: unknown[]): void {
   if (keyset.length === 0 || values.length !== keyset.length) return;
+
+  const lead = keyset[0]!;
+  if (keyset.length > 1 && values[0] !== null && values[0] !== undefined) {
+    qb.where(lead.field, lead.direction === 'asc' ? '>=' : '<=', values[0]);
+  }
 
   qb.where((outer) => {
     for (let tier = 0; tier < keyset.length; tier++) {
