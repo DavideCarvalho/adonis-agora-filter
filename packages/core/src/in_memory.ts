@@ -190,6 +190,9 @@ export function defineCollection<T extends object>(
 
 type Predicate<T> = (row: T) => boolean;
 
+/** Sentinel for a not-yet-read sort value (`undefined` is a legitimate read result). */
+const UNREAD: unique symbol = Symbol('unread');
+
 function isNil(value: unknown): value is null | undefined {
   return value === null || value === undefined;
 }
@@ -371,6 +374,8 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
   private countAlias: string | undefined;
   private limitCount: number | undefined;
   private offsetCount: number | undefined;
+  /** Lazily-built readers for to-one relation hops, so a dotted read does not allocate per row. */
+  private relationReaders: Map<string, InMemoryQueryBuilder<object>> | undefined;
 
   constructor(
     readonly collection: InMemoryCollection<T>,
@@ -416,10 +421,21 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
     }
     const related = relatedRows(relation.get(row))[0];
     if (related === undefined) return undefined;
-    return relation
-      .target()
-      .query([])
-      .read(related, path.slice(dot + 1));
+    return this.relationReader(head, relation).read(related, path.slice(dot + 1));
+  }
+
+  /** The (memoized) empty builder over a relation's target collection, used to read through it. */
+  private relationReader(
+    head: string,
+    relation: InMemoryRelation<T>,
+  ): InMemoryQueryBuilder<object> {
+    this.relationReaders ??= new Map();
+    let reader = this.relationReaders.get(head);
+    if (reader === undefined) {
+      reader = relation.target().query([]);
+      this.relationReaders.set(head, reader);
+    }
+    return reader;
   }
 
   /** The declared kind of a path (following to-one relations), or `unknown`. */
@@ -427,12 +443,10 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
     const path = this.unqualify(rawPath);
     const dot = path.indexOf('.');
     if (dot === -1) return this.field(path) ?? { kind: 'unknown', array: false };
-    const relation = this.collection.$relations[path.slice(0, dot)];
+    const head = path.slice(0, dot);
+    const relation = this.collection.$relations[head];
     if (!relation) return { kind: 'unknown', array: false };
-    return relation
-      .target()
-      .query([])
-      .kindOf(path.slice(dot + 1));
+    return this.relationReader(head, relation).kindOf(path.slice(dot + 1));
   }
 
   /**
@@ -713,16 +727,42 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
 
   // -- execution --------------------------------------------------------------------------------
 
-  private compareRows(a: T, b: T): number {
-    for (const { field, direction } of this.sorts) {
-      const c = this.compareValues(
-        this.read(a, field),
-        this.read(b, field),
-        this.kindOf(field).kind,
-      );
-      if (c !== 0) return direction === 'desc' ? -c : c;
-    }
-    return 0;
+  /**
+   * Sort rows by the recorded `orderBy`s. Each row's sort values are read at most once per field
+   * (memoized lazily, so a field is only read for rows whose earlier fields tied — exactly when a
+   * pairwise comparator would read it) instead of twice per comparison, turning O(n log n) reads
+   * (virtual getters, relation hops) into O(n).
+   */
+  private sortRows(rows: T[]): T[] {
+    const sorts = this.sorts;
+    const kinds: (FilterFieldKind | undefined)[] = new Array(sorts.length);
+    const entries = rows.map((row) => ({
+      row,
+      values: new Array<unknown>(sorts.length).fill(UNREAD),
+    }));
+    const valueAt = (entry: { row: T; values: unknown[] }, i: number): unknown => {
+      let value = entry.values[i];
+      if (value === UNREAD) {
+        value = this.read(entry.row, (sorts[i] as SortItem).field);
+        entry.values[i] = value;
+      }
+      return value;
+    };
+    entries.sort((a, b) => {
+      for (let i = 0; i < sorts.length; i++) {
+        const va = valueAt(a, i);
+        const vb = valueAt(b, i);
+        let kind = kinds[i];
+        if (kind === undefined) {
+          kind = this.kindOf((sorts[i] as SortItem).field).kind;
+          kinds[i] = kind;
+        }
+        const c = this.compareValues(va, vb, kind);
+        if (c !== 0) return (sorts[i] as SortItem).direction === 'desc' ? -c : c;
+      }
+      return 0;
+    });
+    return entries.map((entry) => entry.row);
   }
 
   /** Ascending comparison with NULLs sorting last (so NULLS FIRST once a desc sort negates it). */
@@ -737,19 +777,21 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
     const matched = this.rows.filter((row) => this.matches(row));
     if (this.groups.length > 0) return this.aggregate(matched) as unknown as T[];
 
-    const sorted =
-      this.sorts.length > 0 ? [...matched].sort((a, b) => this.compareRows(a, b)) : matched;
+    const sorted = this.sorts.length > 0 && matched.length > 1 ? this.sortRows(matched) : matched;
 
     if (this.distinctFields.length > 0) {
       const seen = new Set<string>();
       const out: Record<string, unknown>[] = [];
+      const fields = this.distinctFields;
+      const names = fields.map((field) => this.unqualify(field));
+      const kinds = fields.map((field) => this.kindOf(field).kind);
       for (const row of sorted) {
         const projected: Record<string, unknown> = {};
         const key: unknown[] = [];
-        for (const field of this.distinctFields) {
-          const value = this.read(row, field);
-          projected[this.unqualify(field)] = value;
-          key.push(normalize(value, this.kindOf(field).kind) ?? null);
+        for (let i = 0; i < fields.length; i++) {
+          const value = this.read(row, fields[i] as string);
+          projected[names[i] as string] = value;
+          key.push(normalize(value, kinds[i] as FilterFieldKind) ?? null);
         }
         const k = JSON.stringify(key);
         if (!seen.has(k)) {
@@ -780,6 +822,7 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
     const single = columns.length === 1 ? (columns[0] as string) : undefined;
     const unnest = single !== undefined && this.kindOf(single).array;
     const searches = this.groupSearches.filter((s) => s.field === single);
+    const kinds = columns.map((c) => this.kindOf(c).kind);
 
     for (const row of rows) {
       const tuples: unknown[][] = [];
@@ -800,7 +843,7 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
       }
       for (const values of tuples) {
         const key = JSON.stringify(
-          values.map((v, i) => normalize(v, this.kindOf(columns[i] as string).kind) ?? null),
+          values.map((v, i) => normalize(v, kinds[i] as FilterFieldKind) ?? null),
         );
         const group = groups.get(key);
         if (group) group.count++;
@@ -838,7 +881,7 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
                 ? columns.indexOf(this.selects[aliasIndex]!.expr)
                 : -1;
           if (i === -1) throw new InMemoryQueryError(`Cannot order grouped rows by "${field}".`);
-          c = this.compareValues(a.values[i], b.values[i], this.kindOf(columns[i] as string).kind);
+          c = this.compareValues(a.values[i], b.values[i], kinds[i] as FilterFieldKind);
         }
         if (c !== 0) return direction === 'desc' ? -c : c;
       }

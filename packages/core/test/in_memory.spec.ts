@@ -335,6 +335,55 @@ describe('in-memory adapter — search, sort, pagination, distinct', () => {
     ).toEqual([3, 1, 4, 2]);
   });
 
+  it('reads each row sort value at most once, and only for tied earlier keys', () => {
+    let scoreReads = 0;
+    let nameReads = 0;
+    const scored = defineCollection<{ id: number; score: number; name: string }>({
+      fields: {
+        id: 'number',
+        score: {
+          type: 'number',
+          get: (r) => {
+            scoreReads++;
+            return r.score;
+          },
+        },
+        name: {
+          type: 'string',
+          get: (r) => {
+            nameReads++;
+            return r.name;
+          },
+        },
+      },
+    });
+    const rows = Array.from({ length: 200 }, (_, i) => ({
+      id: i,
+      score: (i * 7919) % 101,
+      name: `n${(i * 31) % 17}`,
+    }));
+    rows.push({ id: 999, score: 1000, name: 'unique' });
+    const page = filterInMemory(
+      scored,
+      rows,
+      {
+        sort: [
+          { field: 'score', direction: 'desc' },
+          { field: 'name', direction: 'asc' },
+        ],
+        size: 300,
+      },
+      { allowed: '*', maxSize: 300 },
+    );
+    const expected = [...rows].sort(
+      (a, b) => b.score - a.score || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    );
+    expect(page.data.map((r) => r.id)).toEqual(expected.map((r) => r.id));
+    expect(scoreReads).toBe(rows.length);
+    // The unique top score never ties, so its name is never needed.
+    expect(nameReads).toBeLessThan(rows.length);
+  });
+
   it('drops sorts on non-sortable fields', () => {
     expect(ids({ sort: [{ field: 'age', direction: 'desc' }] }, { allowed: ['first'] })).toEqual([
       1, 2, 3, 4,
