@@ -600,7 +600,16 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
     return this.add((row) => relatedRows(declared.get(row)).some((r) => child.matches(r)));
   }
 
-  whereNot(column: string, value: unknown): this {
+  whereNot(callback: (qb: QueryBuilderLike) => void): this;
+  whereNot(column: string, value: unknown): this;
+  whereNot(...args: unknown[]): this {
+    if (typeof args[0] === 'function') {
+      const child = new InMemoryQueryBuilder(this.collection);
+      (args[0] as (qb: QueryBuilderLike) => void)(child);
+      if (child.clauses.length === 0) return this;
+      return this.add((row) => !child.matches(row));
+    }
+    const [column, value] = args as [string, unknown];
     if (isNil(value)) return this.whereNotNull(column);
     return this.add(this.equalsLeaf(column, value, true));
   }

@@ -210,6 +210,13 @@ describe('in-memory adapter — operators', () => {
     expect(ids(where({ field: 'posts.title', operator: 'contains', value: '%' }))).toEqual([2]);
   });
 
+  it('notContains is the negation of contains, and NULL matches neither', () => {
+    expect(ids(where({ field: 'last', operator: 'notContains', value: 'OVE' }))).toEqual([2, 3, 4]);
+    expect(ids(where({ field: 'email', operator: 'notContains', value: 'EXAMPLE' }))).toEqual([3]);
+    // no element contains 'at' — the empty array qualifies, the NULL array does not
+    expect(ids(where({ field: 'tags', operator: 'notContains', value: 'AT' }))).toEqual([4]);
+  });
+
   it('LIKE on a non-string field matches the stringified value', () => {
     expect(ids(where({ field: 'age', operator: 'contains', value: '7' }))).toEqual([4]);
   });

@@ -188,7 +188,9 @@ query.whereNotNull('confirmedAt').preload('team').withCount('posts')
 return query.filterPaginate() // ?page=2&size=500 → page 2, size clamped to maxSize
 ```
 
-Calling it on a query nothing has filtered throws rather than guessing.
+Calling it on a query nothing has filtered throws rather than guessing. Both `filterPaginate` forms read the page before the total and skip
+the count when the page comes back short — see [the provider page](/docs/filter/guides/provider)
+for when they fall back to Lucid's `paginate`.
 
 ## What `setup()` is for
 

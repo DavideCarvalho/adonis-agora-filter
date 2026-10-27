@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { discoverAggregateSources, type LucidModelLike } from '../src/aggregate.js';
 import { applyComputedField } from '../src/lucid_adapter.js';
+import { applyFilter } from '../src/runner.js';
 import type { ComputedSource } from '../src/types.js';
 import { MockQueryBuilder } from './mock_query_builder.js';
 
@@ -163,5 +164,90 @@ describe('aggregate value binding (injection safety)', () => {
       '((SELECT COUNT(*) FROM "posts" WHERE "posts"."author_id" = "authors"."id")) > ?',
     );
     expect(call?.args[1]).toEqual([3]);
+  });
+});
+
+describe('$count emptiness filters', () => {
+  const model = fakeModel(
+    {
+      posts: {
+        type: 'hasMany',
+        childTable: 'posts',
+        foreignKeyColumnName: 'author_id',
+        localKeyColumnName: 'id',
+      },
+      tags: {
+        type: 'manyToMany',
+        childTable: 'tags',
+        relatedKeyColumnName: 'id',
+        pivotTable: 'article_tag',
+        pivotForeignKey: 'article_id',
+        pivotRelatedForeignKey: 'tag_id',
+        localKeyColumnName: 'id',
+      },
+    },
+    'authors',
+  );
+  const computed = discoverAggregateSources(model, { posts: { aggregates: ['views'] }, tags: {} });
+
+  function raw(field: string, operator: string, value: unknown) {
+    const qb = new MockQueryBuilder();
+    applyFilter(
+      qb,
+      { filters: [{ field, operator: operator as never, value }] },
+      { allowed: [], computed, table: 'authors' },
+    );
+    return qb.findAll('whereRaw').map((c) => c.args);
+  }
+
+  const posts = 'SELECT 1 FROM "posts" WHERE "posts"."author_id" = "authors"."id"';
+
+  it('non-empty tests compile to EXISTS, with no binding', () => {
+    for (const [op, value] of [
+      ['gt', 0],
+      ['gt', '0'],
+      ['gte', 1],
+      ['notEquals', 0],
+    ] as const) {
+      expect(raw('posts.$count', op, value)).toEqual([[`EXISTS (${posts})`, []]]);
+    }
+  });
+
+  it('empty tests compile to NOT EXISTS', () => {
+    for (const [op, value] of [
+      ['equals', 0],
+      ['lte', 0],
+      ['lt', 1],
+      ['equals', '0'],
+    ] as const) {
+      expect(raw('posts.$count', op, value)).toEqual([[`NOT EXISTS (${posts})`, []]]);
+    }
+  });
+
+  it('a many-to-many $count tests the pivot rows', () => {
+    expect(raw('tags.$count', 'gt', 0)).toEqual([
+      [
+        'EXISTS (SELECT 1 FROM "article_tag" WHERE "article_tag"."article_id" = "authors"."id")',
+        [],
+      ],
+    ]);
+  });
+
+  it('other comparisons, other aggregates and hand-written sources keep the scalar form', () => {
+    expect(raw('posts.$count', 'gt', 2)).toEqual([
+      [`((SELECT COUNT(*) FROM "posts" WHERE "posts"."author_id" = "authors"."id")) > ?`, [2]],
+    ]);
+    expect(raw('posts.$sum.views', 'gt', 0)[0]?.[0]).toMatch(/^\(\(SELECT COALESCE\(SUM/);
+    const qb = new MockQueryBuilder();
+    applyFilter(
+      qb,
+      { filters: [{ field: 'n', operator: 'gt', value: 0 }] },
+      {
+        allowed: [],
+        computed: { n: ({ alias }) => `(SELECT COUNT(*) FROM x WHERE x.a = ${alias}.id)` },
+        table: 'authors',
+      },
+    );
+    expect(qb.find('whereRaw')?.args[0]).toMatch(/> \?$/);
   });
 });

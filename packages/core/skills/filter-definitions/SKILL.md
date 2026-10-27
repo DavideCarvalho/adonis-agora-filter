@@ -152,8 +152,11 @@ export const userFilter = defineFilter({
 This makes `posts.$count` plus `posts.$sum.views` / `$avg` / `$min` / `$max`
 filterable and sortable. Discovery degrades gracefully — no introspection means
 no aggregates, never a wiring-time throw. Each aggregate is a correlated
-subquery evaluated per row; index the child FK (or materialise a counter) on
-hot paths.
+subquery evaluated per row, except an emptiness-only `$count` filter (`gt 0`,
+`gte 1`, `notEquals 0` for non-empty; `equals 0`, `lte 0`, `lt 1` for empty)
+which compiles to `EXISTS` / `NOT EXISTS` instead, returning the same rows
+while stopping at the first related row; index the child FK (or materialise a
+counter) on hot paths.
 
 Source: `docs/definitions/aggregates.mdx`
 

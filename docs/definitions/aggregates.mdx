@@ -174,6 +174,8 @@ ORDER BY ((SELECT COALESCE(SUM("posts"."views"),0)
 
 The client value (`5`) is a bound parameter; the whole subquery is dev-generated. Aggregate fields inherit every property of computed fields — [injection safety](/docs/filter/definitions/computed#injection-safety), operator coverage, and codegen surfacing (so `make:filter-client` emits `posts.$count` and `posts.$sum.views` into the generated field union).
 
+A `$count` filter that only asks whether the collection is empty — `gt 0`, `gte 1` or `notEquals 0` for non-empty, `equals 0`, `lte 0` or `lt 1` for empty — compiles to `EXISTS (SELECT 1 FROM … WHERE …)` / `NOT EXISTS (…)` instead, which returns the same rows and stops at the first related row rather than counting all of them.
+
 <Callout type="warn">
 Each aggregate is an independent correlated subquery evaluated per row. That's exactly what you want for correctness, but sorting a large table by an aggregate can be expensive — index the child FK (and consider a materialised counter column for hot paths) if the table is big.
 </Callout>

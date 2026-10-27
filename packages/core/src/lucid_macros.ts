@@ -8,6 +8,7 @@ import {
 import { type FilterClass, isFilterClass } from './filter_class.js';
 import type { FilterSpec } from './filter_spec.js';
 import type { QueryBuilderLike } from './lucid_adapter.js';
+import { paginate } from './paginate.js';
 import { readPagination, stashPagination } from './pagination_stash.js';
 import type { ResolvedPagination } from './runner.js';
 
@@ -89,16 +90,16 @@ export function registerFilterMacros(ModelQueryBuilder: MacroableQueryBuilder): 
           'filterPaginate() was called with no filter on a query that has not been filtered. Pass the filter — filterPaginate(UserFilter) — or apply one first.',
         );
       }
-      return this.paginate(stashed.page, stashed.size);
+      return paginate(this, stashed.page, stashed.size);
     }
 
     if (isFilterClass(filter)) {
       return applyFilterFromRequest(this, filter, resolveCtx(ctx), options).then(
-        ({ page, size }: ResolvedPagination) => this.paginate(page, size),
+        ({ page, size }: ResolvedPagination) => paginate(this, page, size),
       );
     }
     const { page, size } = applyFilterFromRequest(this, filter, resolveCtx(ctx), options);
-    return this.paginate(page, size);
+    return paginate(this, page, size);
   } as (this: unknown, ...args: never[]) => unknown);
 }
 

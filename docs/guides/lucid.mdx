@@ -232,6 +232,7 @@ interface QueryBuilderLike {
   orWhere(callback: (qb: QueryBuilderLike) => void): QueryBuilderLike;
   // biome-ignore lint: `relation` is `any` so real Lucid builders satisfy this.
   whereHas(relation: any, callback: (qb: QueryBuilderLike) => void): QueryBuilderLike;
+  whereNot(callback: (qb: QueryBuilderLike) => void): QueryBuilderLike;
   whereNot(column: string, value: unknown): QueryBuilderLike;
   whereIn(column: string, values: unknown[]): QueryBuilderLike;
   whereNotIn(column: string, values: unknown[]): QueryBuilderLike;
@@ -250,7 +251,8 @@ interface QueryBuilderLike {
 ```
 
 The nested-callback `where`/`orWhere` overloads are how AND/OR composition is rendered — they model
-Lucid's grouping closures. The last five members carry everything that cannot be expressed as a
+Lucid's grouping closures. The callback `whereNot` is the negated group, `NOT (...)`, that
+`notContains` compiles to. The last five members carry everything that cannot be expressed as a
 plain column comparison, and they are the ones a hand-written stand-in forgets:
 
 | Member | Drives |

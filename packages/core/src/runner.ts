@@ -1,3 +1,4 @@
+import { countExistencePredicate } from './aggregate.js';
 import { coerceFilterValue } from './coerce_value.js';
 import {
   buildKeyset,
@@ -192,11 +193,10 @@ export function applyFilterConditions(
     const columnFilters: ColumnFilter[] = [];
     for (const filter of input.filters) {
       if (isComputedLeaf(filter, config.computed)) {
-        const expression = resolveComputedExpression(
-          config.computed?.[filter.field] as NonNullable<ComputedFields[string]>,
-          config.table ?? '',
-        );
-        applyComputedField(qb, expression, filter);
+        const source = config.computed?.[filter.field] as NonNullable<ComputedFields[string]>;
+        const existence = countExistencePredicate(source, config.table ?? '', filter);
+        if (existence) qb.whereRaw(existence);
+        else applyComputedField(qb, resolveComputedExpression(source, config.table ?? ''), filter);
       } else {
         columnFilters.push(filter);
       }

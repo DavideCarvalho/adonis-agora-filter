@@ -1,6 +1,8 @@
 import type { AggregateFn } from './aggregate_path.js';
 import type { RelationSpec } from './filter_spec.js';
-import type { ComputedFields, ComputedSource } from './types.js';
+import type { ColumnFilter } from './operators.js';
+import type { ComputedContext, ComputedFields, ComputedSource } from './types.js';
+import { normalizeOperator } from './validate-column-filter.js';
 
 /**
  * The structural slice of a booted Lucid relation the aggregate-subquery
@@ -49,6 +51,67 @@ function q(ident: string): string {
 }
 
 /**
+ * The correlated `FROM … WHERE <correlation>` clause behind each discovered
+ * `$count` source. Keyed by the source function, so a hand-written computed
+ * field never has one.
+ */
+const countRowSets = new WeakMap<ComputedSource & object, (ctx: ComputedContext) => string>();
+
+/** Is `value` the integer `n`, as a number or as the string a query parameter carries? */
+function isInteger(value: unknown, n: number): boolean {
+  return value === n || value === String(n);
+}
+
+/**
+ * The `EXISTS` / `NOT EXISTS` predicate equivalent to a filter on a discovered
+ * `$count` field, when the filter only asks whether the collection is empty:
+ * `gt 0`, `gte 1` and `notEquals 0` mean non-empty; `equals 0`, `lte 0` and
+ * `lt 1` mean empty. `EXISTS` stops at the first related row where the counting
+ * subquery visits all of them. `undefined` for any other filter or source.
+ */
+export function countExistencePredicate(
+  source: ComputedSource,
+  alias: string,
+  filter: ColumnFilter,
+): string | undefined {
+  if (typeof source !== 'function') return undefined;
+  const rowSet = countRowSets.get(source);
+  if (!rowSet) return undefined;
+  const value = filter.value;
+  let exists: boolean;
+  switch (normalizeOperator(filter.operator)) {
+    case 'gt':
+    case 'notEquals':
+      if (!isInteger(value, 0)) return undefined;
+      exists = true;
+      break;
+    case 'gte':
+      if (!isInteger(value, 1)) return undefined;
+      exists = true;
+      break;
+    case 'equals':
+    case 'lte':
+      if (!isInteger(value, 0)) return undefined;
+      exists = false;
+      break;
+    case 'lt':
+      if (!isInteger(value, 1)) return undefined;
+      exists = false;
+      break;
+    default:
+      return undefined;
+  }
+  return `${exists ? 'EXISTS' : 'NOT EXISTS'} (SELECT 1 ${rowSet({ alias })})`;
+}
+
+/** A `$count` source over the rows `rowSet` (`FROM … WHERE …`) selects. */
+function countSource(rowSet: (ctx: ComputedContext) => string): ComputedSource {
+  const source = (ctx: ComputedContext) => `(SELECT COUNT(*) ${rowSet(ctx)})`;
+  countRowSets.set(source, rowSet);
+  return source;
+}
+
+/**
  * The scalar aggregate expression over an (already-quoted) child column. Empty
  * collection semantics: `sum` coalesces to 0; `avg`/`min`/`max` stay NULL (their
  * natural result over zero rows); `count` is naturally 0.
@@ -81,6 +144,11 @@ function oneToManySource(
   pk: string,
   column: string | undefined,
 ): ComputedSource {
+  if (fn === 'count') {
+    return countSource(
+      ({ alias }) => `FROM ${q(childTable)} WHERE ${q(childTable)}.${q(fk)} = ${q(alias)}.${q(pk)}`,
+    );
+  }
   const agg = aggregateExpr(fn, column ? `${q(childTable)}.${q(column)}` : '');
   return ({ alias }) =>
     `(SELECT ${agg} FROM ${q(childTable)} WHERE ${q(childTable)}.${q(fk)} = ${q(alias)}.${q(pk)})`;
@@ -109,8 +177,10 @@ function manyToManySource(
   column: string | undefined,
 ): ComputedSource {
   if (fn === 'count') {
-    return ({ alias }) =>
-      `(SELECT COUNT(*) FROM ${q(meta.pivot)} WHERE ${q(meta.pivot)}.${q(meta.ownerFk)} = ${q(alias)}.${q(meta.ownerPk)})`;
+    return countSource(
+      ({ alias }) =>
+        `FROM ${q(meta.pivot)} WHERE ${q(meta.pivot)}.${q(meta.ownerFk)} = ${q(alias)}.${q(meta.ownerPk)}`,
+    );
   }
   const agg = aggregateExpr(fn, column ? `${q(meta.childTable)}.${q(column)}` : '');
   return ({ alias }) =>

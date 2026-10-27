@@ -12,6 +12,7 @@ import {
 } from './apply_from_request.js';
 import type { FilterClass } from './filter_class.js';
 import type { FilterSpec } from './filter_spec.js';
+import { paginate } from './paginate.js';
 import { stashPagination } from './pagination_stash.js';
 import type { ResolvedPagination } from './runner.js';
 
@@ -126,9 +127,7 @@ export function Filterable<T extends NormalizeConstructor<LucidModel>>(
       const model = this as unknown as typeof FilterableModel;
       // biome-ignore lint/complexity/noThisInStatic: forwards the call to the same model.
       const { query, page, size } = await model.filter.call(this, ctx, filter, options);
-      return (query as ModelQueryBuilderContract<M>).paginate(page, size) as Promise<
-        ModelPaginatorContract<InstanceType<M>>
-      >;
+      return paginate(query, page, size) as Promise<ModelPaginatorContract<InstanceType<M>>>;
     }
   }
 
