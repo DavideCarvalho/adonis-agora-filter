@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 0.11.2
+
+### Patch Changes
+
+- [#128](https://github.com/DavideCarvalho/adonis-agora-filter/pull/128) [`456d256`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/456d256e1f9001751a03193e4aa98cc4740781c0) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - perf(in-memory): read each row's sort values at most once (lazily memoized) instead of twice per comparison, memoize the reader used for to-one relation hops, and hoist per-field kind lookups out of the distinct/group-by row loops. Sorting 20k rows by a virtual field is ~2x faster and by a to-one relation path ~5x faster; results and error behaviour are unchanged.
+
 ## 0.11.1
 
 ### Patch Changes
