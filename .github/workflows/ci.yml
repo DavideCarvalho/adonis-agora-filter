@@ -33,7 +33,7 @@ jobs:
 
       - run: pnpm check:package
 
-  # Node 24 is the only supported line (`engines.node: ">=24"`), so the suite runs on the same pin.
+  # The suite runs on the minimum supported line (`engines.node: ">=24"`), on the same pin as build.
   test:
     runs-on: ubuntu-latest
     steps:
