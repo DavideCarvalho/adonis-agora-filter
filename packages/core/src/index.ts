@@ -1,6 +1,12 @@
 /** Keep in sync with this package's `version` in package.json. */
 export const VERSION = '0.11.2';
 
+/**
+ * The hook `node ace add @adonis-agora/filter` runs: ace looks for `configure` on the package's
+ * main entry. It registers the provider and the commands barrel in `adonisrc.ts`.
+ */
+export { configure } from '../configure.js';
+
 export type { LucidModelLike, LucidRelationLike } from './aggregate.js';
 export { discoverAggregateSources } from './aggregate.js';
 export type { AggregateFn, AggregatePath } from './aggregate_path.js';
