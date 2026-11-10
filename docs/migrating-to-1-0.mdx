@@ -1,0 +1,68 @@
+---
+title: Migrating to 1.0
+description: Move an app from @adonis-agora/filter 0.x to 1.0. The public API is unchanged; 1.0 requires Node.js 24 or later.
+icon: ArrowUpCircle
+---
+
+`@adonis-agora/filter` and `@adonis-agora/filter-client` 1.0 keep the 0.11 API as it is. Every import, filter class, spec option, subpath and query-string spelling works the same, so most apps upgrade by changing the versions and nothing else.
+
+---
+
+## Requirements
+
+- **Node.js 24 or later.** `engines.node` is `>=24` in both packages.
+- **AdonisJS 7** (`@adonisjs/core` `^7.3.0`) and, for the Lucid adapter, `@adonisjs/lucid` `^22.0.0`. Both are unchanged.
+
+---
+
+## Upgrade
+
+1.0 is published first as a release candidate under the `rc` tag. Upgrade the server package and the client package together:
+
+```sh
+npm i @adonis-agora/filter@rc @adonis-agora/filter-client@rc
+```
+
+Once 1.0.0 is final, install it as usual:
+
+```sh
+npm i @adonis-agora/filter@^1.0.0 @adonis-agora/filter-client@^1.0.0
+```
+
+If you installed 0.11.2 or earlier with `node ace add` and `adonisrc.ts` has no filter entries, run the configure hook once:
+
+```sh
+node ace configure @adonis-agora/filter
+```
+
+It adds the provider (`@adonis-agora/filter/filter_provider`) and the commands (`@adonis-agora/filter/commands`), which make `make:filter` and `make:filter-client` available.
+
+---
+
+## Breaking changes
+
+There are no API changes. A controller like this works on 1.0 exactly as it did on 0.11:
+
+```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import User from '#models/user'
+import UserFilter from '#filters/user_filter'
+
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query().whereNull('deletedAt')
+
+    const { page, size } = await query.applyFilterFromRequest(UserFilter)
+
+    return query.paginate(page, size)
+  }
+}
+```
+
+The same applies to the front-end builders:
+
+```ts title="inertia/pages/users/index.tsx"
+import { filterQuery } from '@adonis-agora/filter-client'
+
+const qs = filterQuery().where('name', 'Al').sort('createdAt', 'desc').toQueryString()
+```
