@@ -1,5 +1,13 @@
 # @adonis-agora/filter
 
+## 0.11.3
+
+### Patch Changes
+
+- [#135](https://github.com/DavideCarvalho/adonis-agora-filter/pull/135) [`ed96cf0`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/ed96cf067d8e4d0983cde35c1c59eab81f94bac8) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Fix `node ace add @adonis-agora/filter`: the package's main entry now exports the `configure` hook, so the provider and the commands barrel get registered in `adonisrc.ts`.
+  
+  Fix `node ace make:filter`, which crashed with `SyntaxError: Unexpected identifier 'filterable'` while compiling its stub.
+
 ## 0.11.2
 
 ### Patch Changes
