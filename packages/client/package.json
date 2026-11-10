@@ -64,7 +64,7 @@
     "@tanstack/intent": "0.5.6",
     "@tanstack/table-core": "9.3.1",
     "typescript": "7.0.2",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": ">=24"
