@@ -18,9 +18,9 @@ export default class {{ filterName }} extends BaseModelFilter {
 
   /** Columns clients may filter on with the standard operators — these need no method. */
   static filterable = ['name']
-  /** Columns clients may sort on. Defaults to `filterable`. */
+  /** Columns clients may sort on. Defaults to the filterable list. */
   static sortable = ['createdAt']
-  /** Columns the free-text `search` term scans. */
+  /** Columns the free-text search term scans. */
   static searchable = ['name']
 
   static defaultSort = [{ field: 'createdAt', direction: 'desc' as const }]
@@ -36,10 +36,10 @@ export default class {{ filterName }} extends BaseModelFilter {
   }
 
   /**
-   * One method per request key that needs SQL of its own. `?filter[fullName]=silva` lands here;
+   * One method per request key that needs SQL of its own. ?filter[fullName]=silva lands here;
    * writing the method IS what exposes the key, so it needs no allow-list entry.
    */
   // fullName(value: string) {
-  //   this.$query.whereILike('full_name', `%${value}%`)
+  //   this.$query.whereILike('full_name', '%' + value + '%')
   // }
 }
