@@ -151,7 +151,7 @@ const qs = filterQuery()
   .equals('status', 'active')
   .gte('posts.$count', 5)      // to-many count as a filter
   .sortDesc('posts.$sum.views') // to-many sum as a sort key
-  .page(0, 25)
+  .page(1, 25)
   .toQueryString()
 
 await fetch(`/users?${qs}`)

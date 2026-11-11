@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { filterQuery } from '../src/filter-query-builder.js';
-import { applyTanstackTableState, tanstackTableToFilterQuery } from '../src/tanstack.js';
+import {
+  applyTanstackTableState,
+  tanstackPaginationFromMeta,
+  tanstackTableToFilterQuery,
+} from '../src/tanstack.js';
 
 describe('tanstack adapter', () => {
   describe('default resolveOperator', () => {
@@ -64,11 +68,22 @@ describe('tanstack adapter', () => {
   });
 
   describe('pagination', () => {
-    it('passes the 0-based pageIndex straight through', () => {
-      const result = tanstackTableToFilterQuery({
-        pagination: { pageIndex: 2, pageSize: 25 },
-      });
-      expect(result.paginate).toEqual({ page: 2, size: 25 });
+    it('sends the 0-based pageIndex as the 1-based page', () => {
+      expect(
+        tanstackTableToFilterQuery({ pagination: { pageIndex: 0, pageSize: 25 } }).paginate,
+      ).toEqual({ page: 1, size: 25 });
+      expect(
+        tanstackTableToFilterQuery({ pagination: { pageIndex: 2, pageSize: 25 } }).paginate,
+      ).toEqual({ page: 3, size: 25 });
+    });
+
+    it('maps a response meta back to the 0-based pageIndex', () => {
+      expect(
+        tanstackPaginationFromMeta({ currentPage: 1, perPage: 25, lastPage: 4, total: 90 }),
+      ).toEqual({ pagination: { pageIndex: 0, pageSize: 25 }, pageCount: 4, rowCount: 90 });
+      expect(
+        tanstackPaginationFromMeta({ current_page: 4, per_page: 25, last_page: 4, total: 90 }),
+      ).toEqual({ pagination: { pageIndex: 3, pageSize: 25 }, pageCount: 4, rowCount: 90 });
     });
   });
 
@@ -115,7 +130,7 @@ describe('tanstack adapter', () => {
 
       expect(body.include).toEqual(['author']);
       expect(body.filter.where).toEqual([{ field: 'name', operator: 'iContains', value: 'al' }]);
-      expect(body.paginate).toEqual({ page: 0, size: 10 });
+      expect(body.paginate).toEqual({ page: 1, size: 10 });
     });
   });
 });

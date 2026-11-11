@@ -16,7 +16,7 @@ export interface SortItem {
 }
 
 /**
- * Offset-based pagination parameters.
+ * Offset-based pagination parameters. `page` is 1-based, as on the server.
  */
 export interface OffsetPagination {
   page: number;
@@ -477,8 +477,8 @@ export class FilterQueryBuilder {
    * the distinct values of a column. Repeated fields are deduplicated.
    *
    * @example
-   * filterQuery().where('baseId', 'b1').distinct('afsc').page(0, 20).build()
-   * // → { filter: { where: [...] }, distinct: ['afsc'], paginate: { page: 0, size: 20 } }
+   * filterQuery().where('baseId', 'b1').distinct('afsc').page(1, 20).build()
+   * // → { filter: { where: [...] }, distinct: ['afsc'], paginate: { page: 1, size: 20 } }
    */
   distinct(...fields: string[]): this {
     for (const field of fields) {
@@ -568,14 +568,22 @@ export class FilterQueryBuilder {
   /**
    * Sets offset-based pagination.
    *
-   * @param page - Zero-based page number.
+   * @param page - 1-based page number: `1` is the first page, the same numbering the server and
+   *   Lucid's `paginate` use.
    * @param size - Number of records per page (default 25).
+   * @throws RangeError when `page` or `size` is not an integer of at least 1.
    *
    * @example
-   * filterQuery().page(0, 25).build()
-   * // → { ..., paginate: { page: 0, size: 25 } }
+   * filterQuery().page(1, 25).build()
+   * // → { ..., paginate: { page: 1, size: 25 } }
    */
   page(page: number, size = 25): this {
+    if (!Number.isInteger(page) || page < 1) {
+      throw new RangeError(`page must be an integer >= 1 (pages are 1-based), got ${page}`);
+    }
+    if (!Number.isInteger(size) || size < 1) {
+      throw new RangeError(`size must be an integer >= 1, got ${size}`);
+    }
     this.pagination = { page, size };
     this.notify();
     return this;

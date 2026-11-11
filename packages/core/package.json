@@ -85,6 +85,7 @@
     }
   },
   "devDependencies": {
+    "@adonis-agora/filter-client": "workspace:*",
     "@adonisjs/assembler": "8.6.0",
     "@adonisjs/core": "7.6.0",
     "@adonisjs/lucid": "22.4.2",

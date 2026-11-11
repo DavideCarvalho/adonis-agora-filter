@@ -1,0 +1,122 @@
+---
+title: Migrating to 1.0
+description: Move an app from @adonis-agora/filter 0.x to 1.0. The client builder's pages are now 1-based; 1.0 requires Node.js 24 or later.
+icon: ArrowUpCircle
+---
+
+`@adonis-agora/filter` 1.0 keeps the 0.11 server API as it is: every import, filter class, spec option, subpath and query-string spelling works the same. `@adonis-agora/filter-client` 1.0 has one breaking change: `.page()` is now 1-based, like the server.
+
+---
+
+## Requirements
+
+- **Node.js 24 or later.** `engines.node` is `>=24` in both packages, and both are tested on Node 24 and 26.
+- **AdonisJS 7** (`@adonisjs/core` `^7.3.0`) and, for the Lucid adapter, `@adonisjs/lucid` `^22.0.0`. Both are unchanged.
+
+---
+
+## Upgrade
+
+1.0 is published first as a release candidate under the `rc` tag. Upgrade the server package and the client package together:
+
+```sh
+npm i @adonis-agora/filter@rc @adonis-agora/filter-client@rc
+```
+
+Once 1.0.0 is final, install it as usual:
+
+```sh
+npm i @adonis-agora/filter@^1.0.0 @adonis-agora/filter-client@^1.0.0
+```
+
+If you installed 0.11.2 or earlier with `node ace add` and `adonisrc.ts` has no filter entries, run the configure hook once:
+
+```sh
+node ace configure @adonis-agora/filter
+```
+
+It adds the provider (`@adonis-agora/filter/filter_provider`) and the commands (`@adonis-agora/filter/commands`), which make `make:filter` and `make:filter-client` available.
+
+---
+
+## Breaking changes
+
+### Client pages are 1-based
+
+`.page(page, size)` on the client builder numbers pages from `1`, the same as the server and Lucid's `paginate()`. In 0.x it took a 0-based index, which the server read as a 1-based page: `.page(0)` and `.page(1)` both returned the first page, and every later page was one behind.
+
+Before:
+
+```ts title="inertia/pages/users/index.tsx"
+import { filterQuery } from '@adonis-agora/filter-client'
+
+const qs = filterQuery().where('status', 'active').page(0, 25).toQueryString()
+// page=0&size=25 → the server served page 1
+```
+
+After:
+
+```ts title="inertia/pages/users/index.tsx"
+import { filterQuery } from '@adonis-agora/filter-client'
+
+const qs = filterQuery().where('status', 'active').page(1, 25).toQueryString()
+// page=1&size=25 → page 1
+```
+
+Replace `.page(i)` with `.page(i + 1)` wherever `i` counts from zero. `.page()` now throws a `RangeError` for a `page` or `size` below `1` or not an integer, so a missed `.page(0)` fails loudly instead of quietly serving the wrong page.
+
+### The TanStack adapter converts `pageIndex`
+
+`applyTanstackTableState` and `tanstackTableToFilterQuery` now send TanStack's 0-based `pageIndex` as the server's 1-based page. If you added `1` yourself to work around the old behaviour, remove it:
+
+Before:
+
+```ts
+import { filterQuery } from '@adonis-agora/filter-client'
+import { applyTanstackTableState } from '@adonis-agora/filter-client/tanstack'
+
+const { pageIndex, pageSize } = table.getState().pagination
+const qs = applyTanstackTableState(filterQuery(), {
+  pagination: { pageIndex: pageIndex + 1, pageSize },
+}).toQueryString()
+```
+
+After:
+
+```ts
+import { filterQuery } from '@adonis-agora/filter-client'
+import { applyTanstackTableState } from '@adonis-agora/filter-client/tanstack'
+
+const qs = applyTanstackTableState(filterQuery(), {
+  pagination: table.getState().pagination, // pageIndex 0 → page=1
+}).toQueryString()
+```
+
+To read the response back into the table, use `tanstackPaginationFromMeta`. It maps the paginator's `meta` (`currentPage`, `perPage`, `lastPage`, `total`) to `{ pagination, pageCount, rowCount }`, with `pageIndex = currentPage - 1`:
+
+```ts
+import { tanstackPaginationFromMeta } from '@adonis-agora/filter-client/tanstack'
+
+const { data, meta } = await fetch(`/users?${qs}`).then((response) => response.json())
+const { pagination, pageCount, rowCount } = tanstackPaginationFromMeta(meta)
+```
+
+### Server: no changes
+
+Controllers, filter classes and specs work on 1.0 exactly as they did on 0.11:
+
+```ts title="app/controllers/users_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import User from '#models/user'
+import UserFilter from '#filters/user_filter'
+
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query().whereNull('deletedAt')
+
+    const { page, size } = await query.applyFilterFromRequest(UserFilter)
+
+    return query.paginate(page, size)
+  }
+}
+```

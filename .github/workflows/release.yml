@@ -65,13 +65,13 @@ jobs:
 
       # A published version is effectively unrecallable, and every push to master with a pending
       # changeset publishes: verify the exact commit being released here rather than trusting the
-      # PR's CI on an older base. These are ci.yml's checks on its pinned Node (the Node matrix
-      # stays in ci.yml). Build runs here too, so a broken build fails before the version commit
-      # is pushed rather than after.
+      # PR's CI on an older base. These are ci.yml's checks on its pinned Node. Build runs here
+      # too, so a broken build fails before the version commit is pushed rather than after.
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm check:package
 
       # A Renovate patch/minor bump automerges on its own and brings no changeset with it, so
       # the new dependency would reach npm only with the next hand-written changeset. This writes
@@ -169,6 +169,8 @@ jobs:
             [ "$(git log -1 --format='%an|%s' "$c")" = 'github-actions[bot]|chore: version packages' ] || superseded
           done
           git merge --ff-only "origin/$BRANCH"
+          # In pre mode (`.changeset/pre.json`) `changeset version` moves each changeset it consumed
+          # into `.changeset/pre/`, which this top-level count (and changesets/action) skips.
           pending=$(find .changeset -maxdepth 1 -name '*.md' ! -iname 'readme.md' | wc -l)
           if [ "$pending" -eq 0 ]; then
             echo "No pending changesets: publishing whatever is not on npm yet."
@@ -244,7 +246,10 @@ jobs:
       # Stamp every pending-changeset package (and any out-of-range dependent) to
       # `0.0.0-beta-<datetime>` in the runner only, never committed.
       - name: Version as beta snapshot
-        run: pnpm changeset version --snapshot beta && node scripts/sync-version.mjs
+        # changesets refuses a snapshot in pre mode; drop pre.json in this throwaway checkout.
+        run: |
+          rm -f .changeset/pre.json
+          pnpm changeset version --snapshot beta && node scripts/sync-version.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # changelog-github, as in the release job
 

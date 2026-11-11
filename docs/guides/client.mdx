@@ -120,7 +120,7 @@ filterQuery()
   .search('fleet')             // global term
   .include('role', 'posts')    // relations the caller should preload (deduped)
   .distinct('status')          // distinct projection (deduped)
-  .page(0, 25)                 // 0-based page index, size (default 25)
+  .page(1, 25)                 // 1-based page (1 = first page), size (default 25)
   .set('extraKey', 'value')    // arbitrary extra key in the output
 ```
 
@@ -147,8 +147,8 @@ for (const relation of input.include ?? []) {
 The same goes for `select` (JSON:API sparse fieldsets) — it is parsed, never applied.
 </Callout>
 
-<Callout type="warn">
-`.page(page, size)` uses a **0-based** page index (TanStack convention). The server's `applyFilter` resolves a **1-based** page for Lucid's `paginate()`. If you send the client's page straight through, add `1` at the boundary — or use `toQueryString()`, where the page is passed verbatim and you normalize server-side.
+<Callout type="info" title="Pages are 1-based">
+`.page(page, size)` numbers pages from `1`, the same as the server and Lucid's `paginate()`: `.page(1, 25)` is the first page. A `page` or `size` below `1`, or one that is not an integer, throws a `RangeError`.
 </Callout>
 
 ## Output formats
@@ -191,7 +191,7 @@ const q = filterQueryTyped<UserFields>()
   .contains('name', 'Al')
   .gte('age', 18)
   .sortDesc('age')
-  .page(0, 25)
+  .page(1, 25)
   .build()
 
 // ❌ Compile error — 'invalid' is not a UserField:
@@ -352,9 +352,27 @@ const body = tanstackTableToFilterQuery({
 })
 ```
 
-<Callout type="warn">
-TanStack's `pagination.pageIndex` is 0-based and is passed straight to the builder's `.page()`. Keep the [0-based vs 1-based](#sort-pagination-search-include-distinct) note in mind when the server reads it.
-</Callout>
+TanStack's `pagination.pageIndex` is 0-based, and the adapter sends it as the server's 1-based page: `pageIndex: 0` becomes `page=1`. To read the response back into the table, `tanstackPaginationFromMeta` turns the paginator's `meta` into TanStack state:
+
+```ts
+import { filterQuery } from '@adonis-agora/filter-client'
+import {
+  applyTanstackTableState,
+  tanstackPaginationFromMeta,
+} from '@adonis-agora/filter-client/tanstack'
+
+const qs = applyTanstackTableState(filterQuery(), {
+  pagination: table.getState().pagination, // { pageIndex: 0, pageSize: 25 } → page=1&size=25
+}).toQueryString()
+
+const { data, meta } = await fetch(`/users?${qs}`).then((response) => response.json())
+
+// meta.currentPage 1 → pagination.pageIndex 0; pass pageCount and rowCount to the table
+// (with manualPagination: true)
+const { pagination, pageCount, rowCount } = tanstackPaginationFromMeta(meta)
+```
+
+It reads both the camelCase (`currentPage`, `perPage`, `lastPage`) and the snake_case (`current_page`, …) meta keys, and returns `{ pagination, pageCount, rowCount }`.
 
 ## The rest of the public surface
 
