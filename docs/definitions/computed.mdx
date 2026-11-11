@@ -217,7 +217,7 @@ const qs = filterQuery()
   .contains('fullName', 'silva')  // computed string expression
   .gte('postCount', 5)            // computed correlated subquery
   .sortDesc('postCount')          // sort by the subquery
-  .page(0, 25)
+  .page(1, 25)
   .toQueryString()
 
 await fetch(`/users?${qs}`)

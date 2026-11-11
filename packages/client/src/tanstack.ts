@@ -18,7 +18,10 @@ export interface TanstackTableStateOptions {
   columnFilters?: ColumnFiltersState;
   /** Vanilla TanStack `SortingState` — `{ id, desc }[]`. */
   sorting?: SortingState;
-  /** Vanilla TanStack `PaginationState` — `{ pageIndex (0-based), pageSize }`. */
+  /**
+   * Vanilla TanStack `PaginationState` — `{ pageIndex (0-based), pageSize }`. It is sent as the
+   * server's 1-based `page`: `pageIndex: 0` requests `page=1`.
+   */
   pagination?: PaginationState;
   /**
    * Maps each column filter to an operator. Defaults to: array → `in`,
@@ -82,7 +85,7 @@ export function applyTanstackTableState(
   }
 
   if (pagination) {
-    builder.page(pagination.pageIndex, pagination.pageSize);
+    builder.page(pagination.pageIndex + 1, pagination.pageSize);
   }
 
   return builder;
@@ -97,4 +100,47 @@ export function tanstackTableToFilterQuery(
   options: TanstackTableStateOptions = {},
 ): FilterQueryResult {
   return applyTanstackTableState(new FilterQueryBuilder(), options).build();
+}
+
+/**
+ * The pagination meta of a paginated listing, as Lucid serializes it. Both the default camelCase
+ * keys and the snake_case ones (a model with a snake_case naming strategy) are read.
+ */
+export interface PaginationMeta {
+  currentPage?: number;
+  current_page?: number;
+  perPage?: number;
+  per_page?: number;
+  lastPage?: number;
+  last_page?: number;
+  total?: number;
+}
+
+/** TanStack pagination state derived from a server response. */
+export interface TanstackPaginationFromMeta {
+  /** `{ pageIndex (0-based), pageSize }`, ready for `table.setPagination` / `state.pagination`. */
+  pagination: PaginationState;
+  /** Total number of pages, for `pageCount` with `manualPagination: true`. */
+  pageCount: number;
+  /** Total number of rows, for `rowCount`. */
+  rowCount: number;
+}
+
+/**
+ * Maps the `meta` of a paginated response (`page` is 1-based on the server) back to TanStack's
+ * 0-based `pageIndex`: `currentPage: 1` becomes `pageIndex: 0`.
+ *
+ * @example
+ * const { data, meta } = await fetch(`/users?${qs}`).then((r) => r.json());
+ * const { pagination, pageCount, rowCount } = tanstackPaginationFromMeta(meta);
+ */
+export function tanstackPaginationFromMeta(meta: PaginationMeta): TanstackPaginationFromMeta {
+  const currentPage = meta.currentPage ?? meta.current_page ?? 1;
+  const perPage = meta.perPage ?? meta.per_page ?? 0;
+  const lastPage = meta.lastPage ?? meta.last_page ?? 1;
+  return {
+    pagination: { pageIndex: Math.max(0, currentPage - 1), pageSize: perPage },
+    pageCount: lastPage,
+    rowCount: meta.total ?? 0,
+  };
 }

@@ -973,8 +973,8 @@ describe('FilterQueryBuilder', () => {
 
   describe('page()', () => {
     it('sets pagination in build result', () => {
-      const result = filterQuery().page(0, 25).build();
-      expect(result.paginate).toEqual({ page: 0, size: 25 });
+      const result = filterQuery().page(1, 25).build();
+      expect(result.paginate).toEqual({ page: 1, size: 25 });
     });
 
     it('defaults size to 25', () => {
@@ -983,7 +983,7 @@ describe('FilterQueryBuilder', () => {
     });
 
     it('replaces previous pagination', () => {
-      const result = filterQuery().page(0, 10).page(3, 50).build();
+      const result = filterQuery().page(1, 10).page(3, 50).build();
       expect(result.paginate).toEqual({ page: 3, size: 50 });
     });
 
@@ -992,9 +992,25 @@ describe('FilterQueryBuilder', () => {
       expect(result.paginate).toBeUndefined();
     });
 
+    it('is 1-based: page 1 is the first page on the wire', () => {
+      expect(filterQuery().page(1, 10).toQueryString()).toBe('page=1&size=10');
+    });
+
+    it('rejects a page below 1 or not an integer', () => {
+      expect(() => filterQuery().page(0)).toThrow(RangeError);
+      expect(() => filterQuery().page(-1)).toThrow(RangeError);
+      expect(() => filterQuery().page(1.5)).toThrow(RangeError);
+      expect(() => filterQuery().page(Number.NaN)).toThrow(RangeError);
+    });
+
+    it('rejects a size below 1 or not an integer', () => {
+      expect(() => filterQuery().page(1, 0)).toThrow(RangeError);
+      expect(() => filterQuery().page(1, 2.5)).toThrow(RangeError);
+    });
+
     it('page returns this for chaining', () => {
       const builder = filterQuery();
-      expect(builder.page(0)).toBe(builder);
+      expect(builder.page(1)).toBe(builder);
     });
 
     it('clear() resets pagination', () => {
@@ -1021,11 +1037,11 @@ describe('FilterQueryBuilder', () => {
       const qs = filterQuery()
         .where('status', 'active')
         .sortDesc('createdAt')
-        .page(0, 25)
+        .page(1, 25)
         .toQueryString();
       expect(qs).toContain('filter');
       expect(qs).toContain('sort=-createdAt');
-      expect(qs).toContain('page=0');
+      expect(qs).toContain('page=1');
       expect(qs).toContain('size=25');
     });
 
@@ -1046,14 +1062,14 @@ describe('FilterQueryBuilder', () => {
         .include('posts')
         .search('fleet')
         .sortDesc('createdAt')
-        .page(0, 25)
+        .page(1, 25)
         .build();
 
       expect(result.filter.where).toHaveLength(1);
       expect(result.include).toEqual(['posts']);
       expect(result.search).toBe('fleet');
       expect(result.sort).toEqual([{ field: 'createdAt', direction: 'desc' }]);
-      expect(result.paginate).toEqual({ page: 0, size: 25 });
+      expect(result.paginate).toEqual({ page: 1, size: 25 });
     });
 
     it('build() is idempotent with sort and pagination', () => {
@@ -1093,12 +1109,12 @@ describe('FilterQueryBuilder', () => {
         .where('baseId', 'b1')
         .distinct('afsc')
         .sort('afsc')
-        .page(0, 20)
+        .page(1, 20)
         .build();
       expect(result.filter.where).toHaveLength(1);
       expect(result.distinct).toEqual(['afsc']);
       expect(result.sort).toEqual([{ field: 'afsc', direction: 'asc' }]);
-      expect(result.paginate).toEqual({ page: 0, size: 20 });
+      expect(result.paginate).toEqual({ page: 1, size: 20 });
     });
 
     it('serializes to a query string', () => {

@@ -149,7 +149,7 @@ const result = await query.paginate(page, size)
 ```
 
 <Callout type="info" title="Lucid pagination is 1-based">
-`applyFilter` resolves `page` with a floor of `1`, matching Lucid's `query.paginate(page, perPage)` which is 1-based. The [client builder](/docs/filter/guides/client)'s `.page(page, size)` is 0-based (TanStack convention) — normalize at the boundary if you pass client page numbers straight through.
+`applyFilter` resolves `page` with a floor of `1`, matching Lucid's `query.paginate(page, perPage)` which is 1-based. The [client builder](/docs/filter/guides/client)'s `.page(page, size)` is 1-based too, so a client page number goes through unchanged.
 </Callout>
 
 ## throwOnInvalid — strict mode

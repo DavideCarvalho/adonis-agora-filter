@@ -21,9 +21,9 @@ describe('TypedFilterQuery type', () => {
 
   it('accepts paginate', () => {
     const q: TypedFilterQuery<UserFields> = {
-      paginate: { page: 0, size: 25 },
+      paginate: { page: 1, size: 25 },
     };
-    expect(q.paginate?.page).toBe(0);
+    expect(q.paginate?.page).toBe(1);
   });
 
   it('accepts include and search', () => {
@@ -99,7 +99,7 @@ describe('filterQueryTyped', () => {
   });
 
   it('build() returns FilterQueryResult', () => {
-    const q = filterQueryTyped<UserFields>().contains('name', 'Al').page(0, 25);
+    const q = filterQueryTyped<UserFields>().contains('name', 'Al').page(1, 25);
     const result = q.build();
     expect(result).toHaveProperty('filter');
     expect(result).toHaveProperty('paginate');
@@ -120,7 +120,7 @@ describe('filterQueryTyped', () => {
   });
 
   it('distinct() accepts valid fields and builds', () => {
-    const q = filterQueryTyped<UserFields>().distinct('status').sortAsc('status').page(0, 20);
+    const q = filterQueryTyped<UserFields>().distinct('status').sortAsc('status').page(1, 20);
     const result = q.build();
     expect(result.distinct).toEqual(['status']);
   });

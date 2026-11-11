@@ -21,7 +21,7 @@ describe('FilterQueryBuilder — reactivity', () => {
       q.equals('status', 'active'); // delegates to where → 1
       q.sortDesc('createdAt'); // delegates to sort → 1
       q.addGte('age', 18); // delegates to add → 1
-      q.page(0, 25); // primitive → 1
+      q.page(1, 25); // primitive → 1
 
       expect(listener).toHaveBeenCalledTimes(4);
     });
@@ -90,7 +90,7 @@ describe('FilterQueryBuilder — reactivity', () => {
     });
 
     it('matches build() output', () => {
-      const q = filterQuery().where('age', 'gte', 18).sort('name').page(0, 10);
+      const q = filterQuery().where('age', 'gte', 18).sort('name').page(1, 10);
       expect(q.getSnapshot()).toEqual(q.build());
     });
   });

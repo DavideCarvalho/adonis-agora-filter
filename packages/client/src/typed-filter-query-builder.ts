@@ -169,7 +169,7 @@ export interface TypedFilterQueryBuilder<
  *   .contains('name', 'Al')
  *   .gte('age', 18)
  *   .sortDesc('name')
- *   .page(0, 25)
+ *   .page(1, 25)
  *   .build();
  *
  * // TypeScript error — 'invalid' is not assignable to UserFields:

@@ -194,28 +194,30 @@ the same field — the second bound silently erases the first.
 
 Source: docs/guides/client.mdx ("where replaces… add accumulates")
 
-### [HIGH] Sending the zero-based client page straight through
+### [HIGH] Passing TanStack's 0-based pageIndex to `.page()`
 
 Wrong:
 
 ```typescript
-// TanStack pageIndex 1 → server page 1 again
+// .page() is 1-based: pageIndex 0 throws a RangeError, pageIndex 1 asks for page 1 again
 filterQuery().page(table.getState().pagination.pageIndex, 25).toQueryString()
 ```
 
 Correct:
 
 ```typescript
-// normalize at the boundary: serverPage = pageIndex + 1
-.filterQuery().page(table.getState().pagination.pageIndex + 1, 25).toQueryString()
-// …or read page[size]/page[number] server-side and add 1 there
+// the adapter converts: pageIndex 0 → page=1
+applyTanstackTableState(filterQuery(), { pagination: table.getState().pagination }).toQueryString()
+// …or convert yourself
+filterQuery().page(table.getState().pagination.pageIndex + 1, 25).toQueryString()
+// and map the response back with tanstackPaginationFromMeta(meta)
 ```
 
-The builder's `.page()` is 0-based (TanStack convention); `applyFilter` and
-Lucid's `paginate()` resolve 1-based pages — passing the raw value serves the
-previous page with no error anywhere.
+The builder's `.page()` is 1-based, like `applyFilter` and Lucid's
+`paginate()`. TanStack's `pageIndex` is 0-based; `applyTanstackTableState`
+adds 1 and `tanstackPaginationFromMeta` subtracts it again.
 
-Source: docs/guides/client.mdx (0-based vs 1-based warning); docs/guides/filter-classes.mdx
+Source: docs/guides/client.mdx (Pages are 1-based; TanStack Table sync)
 
 ### [HIGH] Treating whereDynamic/type-safety as a security control
 

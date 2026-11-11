@@ -214,6 +214,9 @@ importers:
 
   packages/core:
     devDependencies:
+      '@adonis-agora/filter-client':
+        specifier: workspace:*
+        version: link:../client
       '@adonisjs/assembler':
         specifier: 8.6.0
         version: 8.6.0(typescript@7.0.2)
