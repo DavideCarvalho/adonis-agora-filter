@@ -32,6 +32,13 @@ export type { ApplyCustomFilterOptions, CustomFilterClass } from './custom_filte
 export { applyCustomFilter } from './custom_filter.js';
 export type { DualDecorator, StandardDecoratorContext } from './decorators.js';
 export { filterable, filterFor, searchable, sortable } from './decorators.js';
+export {
+  type ExplainIssue,
+  explainFilterQuery,
+  type FilterQueryExplanation,
+  type RecordedCall,
+} from './dev_tools/explain.js';
+export { parseQueryString } from './dev_tools/query_string.js';
 export { escapeLike } from './escape-like.js';
 export type { FieldAliases } from './field_aliases.js';
 export {
@@ -101,6 +108,12 @@ export {
 } from './lucid_adapter.js';
 export type { MacroableQueryBuilder } from './lucid_macros.js';
 export { registerFilterMacros } from './lucid_macros.js';
+export {
+  DEFAULT_MANIFEST_ENTRYPOINT,
+  loadFilterManifest,
+  type ManifestApp,
+  type ManifestLoad,
+} from './manifest.js';
 export type { NormalizeOptions } from './normalizer.js';
 export { normalizeInput } from './normalizer.js';
 export type {
