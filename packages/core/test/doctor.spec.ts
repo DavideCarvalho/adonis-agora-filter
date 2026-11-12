@@ -10,6 +10,7 @@ import {
   codeShape,
   DEFAULT_CLIENT_OUTPUT,
   filterDoctorChecks,
+  findClientDirs,
 } from '../src/doctor/checks.js';
 import { agoraDoctorChecks } from '../src/doctor/index.js';
 import { defineFilter } from '../src/filter_spec.js';
@@ -26,7 +27,9 @@ afterEach(() => {
 });
 
 /** A fixture app root; `filters` goes into the `filter` config (what the loader also reads). */
-function fakeApp(opts: { filters?: unknown; files?: Record<string, string> } = {}) {
+function fakeApp(
+  opts: { filters?: unknown; codegen?: unknown; files?: Record<string, string> } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), 'filter-doctor-'));
   roots.push(root);
   for (const [file, source] of Object.entries(opts.files ?? {})) {
@@ -40,7 +43,9 @@ function fakeApp(opts: { filters?: unknown; files?: Record<string, string> } = {
       makeURL: (...parts: string[]) => pathToFileURL(join(root, ...parts)),
       config: {
         get: (key: string, fallback?: unknown) =>
-          key === 'filter' && opts.filters !== undefined ? { filters: opts.filters } : fallback,
+          key === 'filter' && opts.filters !== undefined
+            ? { filters: opts.filters, codegen: opts.codegen }
+            : fallback,
       },
     } as never,
   };
@@ -57,11 +62,11 @@ const manifest = {
   posts: { spec: defineFilter({ filterable: ['title'] }) },
 };
 
-function clientFiles(only?: string[]) {
+function clientFiles(only?: string[], dir = DEFAULT_CLIENT_OUTPUT) {
   const files: Record<string, string> = {};
   for (const client of generateFilterClients(manifest)) {
     if (only && !only.includes(client.name)) continue;
-    files[`${DEFAULT_CLIENT_OUTPUT}/${client.filename}`] = client.code;
+    files[`${dir}/${client.filename}`] = client.code;
   }
   return files;
 }
@@ -83,9 +88,82 @@ describe('filter doctor checks', () => {
     expect(empty[0]?.status).toBe('warn');
   });
 
-  it('lists the specs; no generated clients is fine', async () => {
+  it('lists the specs; no generated clients anywhere is reported as skipped, with the path', async () => {
     const out = await run(fakeApp({ filters: manifest }).app);
-    expect(out).toEqual([{ status: 'ok', message: '2 spec(s): people, posts' }]);
+    expect(out[0]).toEqual({ status: 'ok', message: '2 spec(s): people, posts' });
+    expect(out[1]).toMatchObject({ status: 'skip' });
+    expect(out[1]?.message).toContain(`no generated clients in ${DEFAULT_CLIENT_OUTPUT}`);
+    expect(out[1]?.message).toContain('codegen.output');
+    expect(out).toHaveLength(2);
+  });
+
+  it('checks the clients in codegen.output from the filter config', async () => {
+    const dir = 'inertia/generated/filters';
+    const ok = await run(
+      fakeApp({ filters: manifest, codegen: { output: dir }, files: clientFiles(undefined, dir) })
+        .app,
+    );
+    expect(ok[1]).toEqual({ status: 'ok', message: `the clients in ${dir} match the manifest` });
+
+    const stale = await run(
+      fakeApp({ filters: manifest, codegen: { output: dir }, files: clientFiles(['people'], dir) })
+        .app,
+    );
+    expect(stale[1]).toMatchObject({ status: 'warn' });
+    expect(stale[1]?.message).toContain(`clients in ${dir}`);
+    expect(stale[1]?.message).toContain('missing: posts_filter_client.ts');
+  });
+
+  it('reads codegen.output from a named export of config/filter.ts', async () => {
+    const dir = 'resources/js/filters';
+    const files = {
+      ...clientFiles(undefined, dir),
+      'config/filter.js': `export const codegen = { output: '${dir}' }`,
+    };
+    const out = await run(fakeApp({ filters: manifest, files }).app);
+    expect(out[1]?.message).toBe(`the clients in ${dir} match the manifest`);
+  });
+
+  it('warns when codegen.output is set but holds no clients', async () => {
+    const out = await run(fakeApp({ filters: manifest, codegen: { output: 'web/filters' } }).app);
+    expect(out[1]).toMatchObject({ status: 'warn', fix: 'Run `node ace make:filter-client`' });
+    expect(out[1]?.message).toContain('web/filters');
+  });
+
+  it('finds clients written elsewhere by their banner, checks them, and asks for codegen.output', async () => {
+    const dir = 'inertia/generated/filters';
+    const files = {
+      ...clientFiles(['people'], dir),
+      // Same file name without the banner: not a generated client.
+      'app/other/x_filter_client.ts': 'export {}',
+      'node_modules/pkg/posts_filter_client.ts': generateFilterClients(manifest)[1]?.code ?? '',
+    };
+    const out = await run(fakeApp({ filters: manifest, files }).app);
+    expect(out).toHaveLength(3);
+    expect(out[1]).toMatchObject({ status: 'warn' });
+    expect(out[1]?.message).toContain(`clients in ${dir}`);
+    expect(out[1]?.message).toContain('missing: posts_filter_client.ts');
+    // The fix regenerates the directory the result is about, not the default output.
+    expect(out[1]?.fix).toBe(`Run \`node ace make:filter-client --output ${dir}\``);
+    expect(out[2]).toMatchObject({ status: 'warn' });
+    expect(out[2]?.message).toContain(`generated clients are in ${dir}`);
+    expect(out[2]?.fix).toContain(`codegen: { output: '${dir}' }`);
+  });
+
+  it('findClientDirs skips node_modules, dot-dirs and the excluded dir', async () => {
+    const code = generateFilterClients(manifest)[0]?.code ?? '';
+    const { root } = fakeApp({
+      files: {
+        'a/people_filter_client.ts': code,
+        // A long license header above the banner does not hide it.
+        'h/people_filter_client.ts': `${'// license\n'.repeat(40)}${code}`,
+        'b/c/people_filter_client.ts': code,
+        'node_modules/x/people_filter_client.ts': code,
+        '.cache/people_filter_client.ts': code,
+        'skip/people_filter_client.ts': code,
+      },
+    });
+    expect(await findClientDirs(root, join(root, 'skip'))).toEqual(['a', 'b/c', 'h']);
   });
 
   it('is ok when the clients match the manifest, even reformatted', async () => {

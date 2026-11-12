@@ -36,7 +36,12 @@ const manifest: FilterClientManifest = {
 };
 
 const tools = filterDevTools({
-  manifest: async () => ({ status: 'loaded', manifest, entrypoint: 'config/filter.js' }),
+  manifest: async () => ({
+    status: 'loaded',
+    manifest,
+    entrypoint: 'config/filter.js',
+    output: { path: 'app/generated/filters', configured: false },
+  }),
 });
 const tool = (name: string) => tools.find((t) => t.name === name) as DevTool;
 
@@ -222,6 +227,33 @@ describe('loadFilterManifest', () => {
     const fromConfig = await loadFilterManifest(viaConfig.app);
     expect(fromConfig).toMatchObject({ status: 'loaded' });
     expect(Object.keys((fromConfig as { manifest: object }).manifest)).toEqual(['b']);
+  });
+
+  it('resolves codegen.output: named export, default export, filter config, else the default', async () => {
+    const entry = 'a: { spec: { isFilterable() { return true } } }';
+    const output = async (files: Record<string, string>, config?: Record<string, unknown>) =>
+      ((await loadFilterManifest(appWith(files, config).app)) as { output?: unknown }).output;
+
+    expect(await output({ 'config/filter.js': `export const filters = { ${entry} }` })).toEqual({
+      path: 'app/generated/filters',
+      configured: false,
+    });
+    expect(
+      await output({
+        'config/filter.js': `export const filters = { ${entry} }\nexport const codegen = { output: 'inertia/generated/filters' }`,
+      }),
+    ).toEqual({ path: 'inertia/generated/filters', configured: true });
+    expect(
+      await output({
+        'config/filter.js': `export default { filters: { ${entry} }, codegen: { output: 'web/f' } }`,
+      }),
+    ).toEqual({ path: 'web/f', configured: true });
+    expect(
+      await output(
+        {},
+        { filters: { b: { spec: { isFilterable: () => true } } }, codegen: { output: 'x/y' } },
+      ),
+    ).toEqual({ path: 'x/y', configured: true });
   });
 
   it('reports missing, empty and broken manifests', async () => {

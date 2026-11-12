@@ -123,6 +123,26 @@ Generated 1 filter client(s) into app/generated/filters.
 
 Defaults: entrypoint `config/filter.js`, output `app/generated/filters`. The manifest may be a named `filters` export, the module's default export (the manifest itself, or `{ filters }`), or `filters` in the `filter` config. `generateFilterClients(manifest)` (the pure expansion the command wraps) is exported too, if you'd rather write the files yourself.
 
+### Choosing the output directory
+
+To write the clients somewhere else (for example next to your Inertia pages), set `codegen.output` in `config/filter.ts`. `make:filter-client` writes there by default and `agora:doctor` checks the clients there:
+
+```ts title="config/filter.ts"
+export const codegen = { output: 'inertia/generated/filters' }
+
+export const filters: FilterClientManifest = {
+  // ...
+}
+```
+
+With a default export, put it next to the manifest: `export default { filters, codegen: { output: 'inertia/generated/filters' } }`. A `codegen` key in the `filter` config works too.
+
+`--output` still wins for a single run:
+
+```bash
+node ace make:filter-client --output tmp/filters
+```
+
 ## Using the generated client
 
 Import the generated factory in the front-end and build a fully typed, field-name-checked query string:
