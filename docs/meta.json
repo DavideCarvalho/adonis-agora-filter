@@ -13,6 +13,6 @@
     "migrating-to-1-0"
   ],
   "root": true,
-  "description": "A typed query-filter language for AdonisJS \u2014 Spatie/JSON:API input, a Lucid adapter, field allow-listing, and a typed client builder.",
+  "description": "A typed query-filter language for AdonisJS — Spatie/JSON:API input, a Lucid adapter, field allow-listing, and a typed client builder.",
   "icon": "Filter"
 }

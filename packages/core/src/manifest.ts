@@ -39,8 +39,9 @@ function isMissingModule(error: unknown, url: string): boolean {
 }
 
 /**
- * Load the app's `filters` manifest the same way `make:filter-client` does: the named `filters`
- * export (or default export) of `config/filter.ts`, then `filters` in the `filter` config.
+ * Load the app's `filters` manifest: the named `filters` export of `config/filter.ts`, its default
+ * export (a manifest, or `{ filters }`), then `filters` in the `filter` config. The one loader
+ * `make:filter-client`, the doctor and the dev tools share.
  */
 export async function loadFilterManifest(
   app: ManifestApp,
