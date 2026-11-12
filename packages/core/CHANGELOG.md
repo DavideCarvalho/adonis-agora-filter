@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 1.0.0-rc.1
+
+### Minor Changes
+
+- [#145](https://github.com/DavideCarvalho/adonis-agora-filter/pull/145) [`7548c56`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/7548c56e9ac622723ebcdca9a9253ef3068fdc2b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Dev MCP tools on `@adonis-agora/agent`'s `/mcp/agora` endpoint (gated by its `devTools.authorize`): `filter_list_specs`, `filter_get_spec`, `filter_explain_query` (dry run of a query string against a spec, no database). New exports `explainFilterQuery`, `parseQueryString` and `loadFilterManifest`; `make:filter-client` now also reads a default `{ filters }` export or `filters` in the `filter` config.
+
 ## 1.0.0-rc.0
 
 ### Major Changes
