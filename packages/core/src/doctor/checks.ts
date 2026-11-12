@@ -98,11 +98,12 @@ export function clientMatches(onDisk: string, fresh: string): boolean {
   const hash = readFilterClientContentHash(onDisk);
   const expected = readFilterClientContentHash(fresh);
   if (hash !== null && expected !== null) return hash === expected;
-  const withoutHash = fresh
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith(CONTENT_HASH_PREFIX))
-    .join('\n');
-  return codeShape(onDisk) === codeShape(withoutHash);
+  const withoutHash = (code: string): string =>
+    code
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith(CONTENT_HASH_PREFIX))
+      .join('\n');
+  return codeShape(withoutHash(onDisk)) === codeShape(withoutHash(fresh));
 }
 
 async function readOrNull(path: string): Promise<string | null> {

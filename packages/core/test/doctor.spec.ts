@@ -177,6 +177,14 @@ export function peopleFilterQuery() {
     expect(clientMatches(formatted, changed)).toBe(false);
   });
 
+  it('the hash is found below a license header, and a hand edit with an intact hash reads as ok', () => {
+    const fresh = generateFilterClient(typedSpec, { name: 'people' });
+    const licensed = `/*\n * Copyright (c) Acme.\n * SPDX-License-Identifier: MIT\n */\n\n\n${fresh}`;
+    expect(readFilterClientContentHash(licensed)).toBe(readFilterClientContentHash(fresh));
+    // By design: the check is about manifest drift, and the file says DO NOT EDIT.
+    expect(clientMatches(`${fresh}\nexport const extra = 1\n`, fresh)).toBe(true);
+  });
+
   it('an older client without the hash still matches after prettier (unquoted keys, leading |)', () => {
     const fresh = generateFilterClient(typedSpec, { name: 'people' });
     const banner = fresh.split('\n').slice(0, 2).join('\n');

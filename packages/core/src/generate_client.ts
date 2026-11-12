@@ -279,7 +279,9 @@ export function filterClientContentHash(body: string): string {
 
 /** The content hash in a generated client's banner, or `null` (no banner, or an older client). */
 export function readFilterClientContentHash(code: string): string | null {
-  for (const line of code.split('\n', 6)) {
+  // The whole file (clients are small): a license header or blank lines a formatter adds above the
+  // banner must not hide the hash.
+  for (const line of code.split('\n')) {
     const trimmed = line.trim();
     if (trimmed.startsWith(CONTENT_HASH_PREFIX)) {
       return trimmed.slice(CONTENT_HASH_PREFIX.length).trim() || null;
