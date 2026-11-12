@@ -1,0 +1,63 @@
+---
+title: MCP tools
+description: Let your coding agent list your filter specs, read one in full, and dry-run a query string against it (no database), over the Agora dev MCP endpoint.
+icon: Terminal
+---
+
+With [`@adonis-agora/agent`](/docs/agent)'s MCP provider installed, filter adds read-only tools to
+the developer MCP endpoint (`/mcp/agora`), next to the other Agora libraries' tools. Connect Claude
+Code (or any MCP client) as the [agent docs](/docs/agent/dev-tools) show, then ask things like
+*"why does `?filter[email][eq]=x` return everything on the users list?"*.
+
+| Tool | What it returns |
+| --- | --- |
+| `filter_list_specs` | the specs of the `filters` manifest in `config/filter.ts`, with field counts, searchable fields and relations (`limit`, `page`) |
+| `filter_get_spec` | one spec (`name`) in full: filterable and sortable paths, field types, operators, relations, aliases, computed fields, tenant column, defaults |
+| `filter_explain_query` | a dry run of a query string (`name`, `query`): what the server parses, which filters or sorts are dropped or make the request fail and why, the query-builder calls it would make, and the page and size |
+
+The tools read the same manifest [`make:filter-client`](/docs/filter/codegen) does: a `filters`
+export of `config/filter.ts`.
+
+```ts title="config/filter.ts"
+import { defineFilter, type FilterClientManifest } from '@adonis-agora/filter'
+
+export const filters: FilterClientManifest = {
+  users: { spec: defineFilter({ filterable: ['email', 'name'], sortable: ['name'] }) },
+}
+```
+
+`filter_explain_query` never touches the database. It runs your spec through the same parsing,
+validation and allow-list code as a request, against a query builder that only records calls.
+The tenant scope is applied from the request at run time, so the dry run lists the tenant column
+but not its value.
+
+Run the same dry run from code:
+
+```ts
+import { explainFilterQuery } from '@adonis-agora/filter'
+
+const why = explainFilterQuery(usersFilter, 'filter[email][eq]=x&sort=-name')
+why.rejected   // true: "eq" is not an operator, use "equals"
+why.issues     // [{ part: 'filter', subject: 'email', effect: 'rejected', message: '…' }]
+```
+
+## Who may use them
+
+filter has no console, so the endpoint's `devTools.authorize` in `config/mcp.ts` decides. Without
+it the tools are open outside production and refused in production:
+
+```ts title="config/mcp.ts"
+import env from '#start/env'
+import { authorizeByToken } from '@adonis-agora/agent'
+import { defineMcpConfig } from '@adonis-agora/agent/mcp'
+
+export default defineMcpConfig({
+  name: 'Acme',
+  version: '1.0.0',
+  // …your product endpoint…
+  devTools: {
+    authorize: authorizeByToken({ token: env.get('CONSOLE_TOKEN') }),
+    exclude: ['filter'], // leaves the filter tools out
+  },
+})
+```

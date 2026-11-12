@@ -121,7 +121,7 @@ Generated 1 filter client(s) into app/generated/filters.
 </Step>
 </Steps>
 
-Defaults: entrypoint `config/filter.js`, output `app/generated/filters`. The manifest may be a named `filters` export or the module's default export. `generateFilterClients(manifest)` (the pure expansion the command wraps) is exported too, if you'd rather write the files yourself.
+Defaults: entrypoint `config/filter.js`, output `app/generated/filters`. The manifest may be a named `filters` export, the module's default export (the manifest itself, or `{ filters }`), or `filters` in the `filter` config. `generateFilterClients(manifest)` (the pure expansion the command wraps) is exported too, if you'd rather write the files yourself.
 
 ## Using the generated client
 

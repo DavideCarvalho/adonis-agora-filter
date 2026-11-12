@@ -4,6 +4,7 @@ import { args, BaseCommand, flags } from '@adonisjs/core/ace';
 import type { CommandOptions } from '@adonisjs/core/types/ace';
 import type { FilterClientManifest } from '../src/generate_client.js';
 import { generateFilterClients } from '../src/generate_client.js';
+import { loadFilterManifest } from '../src/manifest.js';
 
 /**
  * `node ace make:filter-client [entrypoint]` — the idiomatic AdonisJS equivalent
@@ -64,25 +65,19 @@ export default class MakeFilterClient extends BaseCommand {
     this.logger.success(`Generated ${generated.length} filter client(s) into ${this.output}.`);
   }
 
-  /** Import the entrypoint module and read its `filters` manifest (named or default export). */
+  /** Load the `filters` manifest with the loader the doctor and the dev tools share. */
   async #loadManifest(): Promise<FilterClientManifest | undefined> {
-    const url = this.app.makeURL(this.entrypoint).href;
-    let mod: Record<string, unknown>;
-    try {
-      mod = (await import(url)) as Record<string, unknown>;
-    } catch (error) {
-      this.logger.error(`Could not import filter manifest "${this.entrypoint}": ${String(error)}`);
+    const load = await loadFilterManifest(this.app, this.entrypoint);
+    if (load.status === 'loaded') return load.manifest;
+    if (load.status === 'failed' || load.status === 'missing') {
+      const reason = load.status === 'failed' ? load.error : 'the module was not found';
+      this.logger.error(`Could not import filter manifest "${this.entrypoint}": ${reason}`);
       this.exitCode = 1;
       return undefined;
     }
-
-    const manifest = (mod.filters ?? mod.default) as FilterClientManifest | undefined;
-    if (!manifest || Object.keys(manifest).length === 0) {
-      this.logger.warning(
-        `No \`filters\` manifest exported from "${this.entrypoint}" — nothing to generate.`,
-      );
-      return undefined;
-    }
-    return manifest;
+    this.logger.warning(
+      `No \`filters\` manifest exported from "${this.entrypoint}" — nothing to generate.`,
+    );
+    return undefined;
   }
 }

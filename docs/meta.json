@@ -8,6 +8,7 @@
     "pagination",
     "search",
     "codegen",
+    "mcp-tools",
     "testing",
     "migrating-to-1-0"
   ],
