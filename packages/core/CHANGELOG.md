@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 1.0.0-rc.2
+
+### Minor Changes
+
+- [#146](https://github.com/DavideCarvalho/adonis-agora-filter/pull/146) [`efaae21`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/efaae2137a53a8c85a66a9640d5606256ac82852) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `node ace agora:doctor` (the shared Agora health check) and `node ace filter:doctor`, with the `filter.manifest` check: `config/filter.ts` loads, and the clients in `app/generated/filters` match it (out of date, missing or orphaned → run `make:filter-client`). New `@adonis-agora/filter/doctor` entry for `--no-boot`.
+
 ## 1.0.0-rc.1
 
 ### Minor Changes
