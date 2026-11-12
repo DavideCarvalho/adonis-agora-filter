@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 1.0.0-rc.4
+
+### Patch Changes
+
+- [#149](https://github.com/DavideCarvalho/adonis-agora-filter/pull/149) [`90b00d6`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/90b00d6ef58de0b5665ebf26efdf9777fe93fc4b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `agora:doctor` now checks the generated clients wherever they live. Set `codegen.output` in `config/filter.ts` (`export const codegen = { output: 'inertia/generated/filters' }`): `make:filter-client` writes there by default (`--output` still overrides) and the `filter.manifest` check compares the clients there. Without `codegen.output`, clients generated elsewhere are found by their banner, checked, and the doctor asks you to set it; with no generated clients anywhere the check reports a skip naming the directory it looked in instead of passing silently.
+
 ## 1.0.0-rc.3
 
 ### Patch Changes
