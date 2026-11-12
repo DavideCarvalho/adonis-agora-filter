@@ -53,6 +53,11 @@
       "import": "./dist/commands/main.js",
       "default": "./dist/commands/main.js"
     },
+    "./doctor": {
+      "types": "./dist/src/doctor/index.d.ts",
+      "import": "./dist/src/doctor/index.js",
+      "default": "./dist/src/doctor/index.js"
+    },
     "./filter_provider": {
       "types": "./dist/providers/filter_provider.d.ts",
       "import": "./dist/providers/filter_provider.js",
@@ -73,7 +78,8 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.typetest.json",
-    "copy:stubs": "mkdir -p dist/stubs/make/filter && cp stubs/make/filter/main.stub dist/stubs/make/filter/main.stub"
+    "copy:stubs": "mkdir -p dist/stubs/make/filter && cp stubs/make/filter/main.stub dist/stubs/make/filter/main.stub",
+    "check:agora-doctor": "node ../../scripts/check-agora-doctor.mjs ."
   },
   "peerDependencies": {
     "@adonisjs/core": "^7.3.0",
