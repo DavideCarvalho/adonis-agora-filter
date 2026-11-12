@@ -70,8 +70,11 @@ node ace make:filter-client
 # create app/generated/filters/people_filter_client.ts
 ```
 
-Defaults: entrypoint `config/filter.js`, output `app/generated/filters`. Pass
-an explicit entrypoint/dir with
+Defaults: entrypoint `config/filter.js`, output `codegen.output` from
+`config/filter.ts` (`export const codegen = { output: 'inertia/generated/filters' }`),
+else `app/generated/filters`. `agora:doctor` checks the clients in that same
+directory, so set `codegen.output` rather than relying on `--output` alone.
+Pass an explicit entrypoint/dir for one run with
 `node ace make:filter-client config/filter.js --output app/generated/filters`.
 
 ## Core patterns

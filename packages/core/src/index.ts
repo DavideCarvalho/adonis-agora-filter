@@ -109,7 +109,10 @@ export {
 export type { MacroableQueryBuilder } from './lucid_macros.js';
 export { registerFilterMacros } from './lucid_macros.js';
 export {
+  type ClientOutput,
+  DEFAULT_CLIENT_OUTPUT,
   DEFAULT_MANIFEST_ENTRYPOINT,
+  type FilterCodegenConfig,
   loadFilterManifest,
   type ManifestApp,
   type ManifestLoad,

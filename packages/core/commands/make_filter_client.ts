@@ -4,7 +4,7 @@ import { args, BaseCommand, flags } from '@adonisjs/core/ace';
 import type { CommandOptions } from '@adonisjs/core/types/ace';
 import type { FilterClientManifest } from '../src/generate_client.js';
 import { generateFilterClients } from '../src/generate_client.js';
-import { loadFilterManifest } from '../src/manifest.js';
+import { loadFilterManifest, type ManifestLoad } from '../src/manifest.js';
 
 /**
  * `node ace make:filter-client [entrypoint]` — the idiomatic AdonisJS equivalent
@@ -28,6 +28,9 @@ import { loadFilterManifest } from '../src/manifest.js';
  *   people: { spec: defineFilter({ filterable: ['name', 'age'] }), fieldTypes: { age: { kind: 'number' } } },
  * }
  * ```
+ *
+ * The output directory is `--output`, else `codegen.output` from the same module (or the `filter`
+ * config), else `app/generated/filters`.
  */
 export default class MakeFilterClient extends BaseCommand {
   static override commandName = 'make:filter-client';
@@ -43,16 +46,18 @@ export default class MakeFilterClient extends BaseCommand {
   declare entrypoint: string;
 
   @flags.string({
-    description: 'Output directory for the generated clients',
-    default: 'app/generated/filters',
+    description:
+      'Output directory for the generated clients (default: codegen.output in config/filter.ts, else app/generated/filters)',
   })
-  declare output: string;
+  declare output?: string;
 
   override async run(): Promise<void> {
-    const manifest = await this.#loadManifest();
-    if (!manifest) return;
+    const load = await this.#loadManifest();
+    if (!load) return;
+    const { manifest } = load;
 
-    const outDir = isAbsolute(this.output) ? this.output : this.app.makePath(this.output);
+    const output = this.output ?? load.output.path;
+    const outDir = isAbsolute(output) ? output : this.app.makePath(output);
     await mkdir(outDir, { recursive: true });
 
     const generated = generateFilterClients(manifest);
@@ -62,13 +67,13 @@ export default class MakeFilterClient extends BaseCommand {
       this.logger.action(`create ${path}`).succeeded();
     }
 
-    this.logger.success(`Generated ${generated.length} filter client(s) into ${this.output}.`);
+    this.logger.success(`Generated ${generated.length} filter client(s) into ${output}.`);
   }
 
   /** Load the `filters` manifest with the loader the doctor and the dev tools share. */
-  async #loadManifest(): Promise<FilterClientManifest | undefined> {
+  async #loadManifest(): Promise<Extract<ManifestLoad, { status: 'loaded' }> | undefined> {
     const load = await loadFilterManifest(this.app, this.entrypoint);
-    if (load.status === 'loaded') return load.manifest;
+    if (load.status === 'loaded') return load;
     if (load.status === 'failed' || load.status === 'missing') {
       const reason = load.status === 'failed' ? load.error : 'the module was not found';
       this.logger.error(`Could not import filter manifest "${this.entrypoint}": ${reason}`);
