@@ -43,3 +43,11 @@ Add it to CI after the build:
 The client comparison starts once you generate clients: with no `*_filter_client.ts` in
 `app/generated/filters` (you don't use codegen, or write them elsewhere), `filter.manifest` only
 checks that the manifest loads.
+
+Formatting your generated clients is fine. Each client's banner carries a
+`// Content hash: sha256:…` line, the hash of what `make:filter-client` emitted. Formatters
+(prettier, biome, eslint `--fix`) leave line comments alone, so `filter.manifest` compares that
+hash with a fresh generation instead of comparing code. A client is out of date only when the
+manifest (or the generator) would now emit something different. Clients generated before the hash
+existed are compared with quotes, semicolons, commas, whitespace, quoted keys and a union's leading
+`|` ignored. Regenerate once to get the hash.

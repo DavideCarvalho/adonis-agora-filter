@@ -5,10 +5,20 @@ import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import FilterProvider from '../providers/filter_provider.js';
 import type { AgoraDoctorCheck, AgoraDoctorResult } from '../src/doctor/agora_doctor.js';
-import { codeShape, DEFAULT_CLIENT_OUTPUT, filterDoctorChecks } from '../src/doctor/checks.js';
+import {
+  clientMatches,
+  codeShape,
+  DEFAULT_CLIENT_OUTPUT,
+  filterDoctorChecks,
+} from '../src/doctor/checks.js';
 import { agoraDoctorChecks } from '../src/doctor/index.js';
 import { defineFilter } from '../src/filter_spec.js';
-import { generateFilterClients } from '../src/generate_client.js';
+import {
+  CONTENT_HASH_PREFIX,
+  generateFilterClient,
+  generateFilterClients,
+  readFilterClientContentHash,
+} from '../src/generate_client.js';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -99,13 +109,102 @@ describe('filter doctor checks', () => {
       [`${DEFAULT_CLIENT_OUTPUT}/old_filter_client.ts`]: 'export {}',
     };
     const peopleFile = Object.keys(files)[0] as string;
-    files[peopleFile] = `${files[peopleFile]}\nexport const extra = 1`;
+    // Generated from an older version of the spec (one field fewer).
+    files[peopleFile] = generateFilterClient(defineFilter({ filterable: ['name'] }), {
+      name: 'people',
+    });
     const out = await run(fakeApp({ filters: manifest, files }).app);
     expect(out[1]).toMatchObject({ status: 'warn' });
     expect(out[1]?.message).toContain('out of date: people_filter_client.ts');
     expect(out[1]?.message).toContain('missing: posts_filter_client.ts');
     expect(out[1]?.message).toContain('no longer in the manifest: old_filter_client.ts');
     expect(out[1]?.fix).toContain('node ace make:filter-client');
+  });
+
+  /** The client {@link typedSpec} generates, exactly as prettier 3.9 printed it (`@adonisjs/prettier-config`). */
+  const typedSpec = defineFilter({
+    filterable: ['name', 'age', 'status', 'createdAt', 'organization.name', 'ownerEmail'],
+    sortable: ['createdAt', 'name', 'age', 'status', 'organizationName', 'veryLongFieldNameOne'],
+    fieldTypes: {
+      age: { kind: 'number' },
+      status: { enumValues: ['active', "it's off"], nullable: true },
+    },
+  });
+  const prettierBody = `import { filterQueryTyped as _filterQueryTyped } from '@adonis-agora/filter-client'
+
+/** Filterable field paths for \`people\` — the client's field-name allow-list. */
+export type PeopleFilterFields =
+  'name' | 'age' | 'status' | 'createdAt' | 'organization.name' | 'ownerEmail'
+
+/** Per-field value types for \`people\` (drives operator narrowing). */
+export interface PeopleFilterFieldTypes {
+  age: number
+  status: 'active' | "it's off" | null
+}
+
+/** Runtime filter metadata for \`people\`. */
+export const peopleFilterMeta = {
+  fields: ['name', 'age', 'status', 'createdAt', 'organization.name', 'ownerEmail'],
+  sortable: ['createdAt', 'name', 'age', 'status', 'organizationName', 'veryLongFieldNameOne'],
+  searchable: [],
+  relations: [],
+  types: { age: 'number', status: 'unknown' },
+  defaultSort: [],
+  cursorKeyset: [],
+  defaultSize: undefined,
+  maxSize: undefined,
+} as const
+
+/** A type-safe filter-query builder scoped to \`people\`'s filterable fields. */
+export function peopleFilterQuery() {
+  return _filterQueryTyped<PeopleFilterFields, PeopleFilterFieldTypes>()
+}
+`;
+
+  it('a prettier-formatted client matches by its content hash', () => {
+    const fresh = generateFilterClient(typedSpec, { name: 'people' });
+    const hashLine = fresh.split('\n').find((line) => line.startsWith(CONTENT_HASH_PREFIX));
+    expect(hashLine).toMatch(/^\/\/ Content hash: sha256:[0-9a-f]{16}$/);
+    const formatted = `${fresh.split('\n').slice(0, 4).join('\n')}\n${prettierBody}`;
+    expect(readFilterClientContentHash(formatted)).toBe(readFilterClientContentHash(fresh));
+    expect(clientMatches(formatted, fresh)).toBe(true);
+
+    // The spec changed: the fresh hash differs, however the old file was formatted.
+    const changed = generateFilterClient(
+      defineFilter({ ...typedSpec, filterable: [...typedSpec.filterable, 'email'] } as never),
+      { name: 'people' },
+    );
+    expect(clientMatches(formatted, changed)).toBe(false);
+  });
+
+  it('an older client without the hash still matches after prettier (unquoted keys, leading |)', () => {
+    const fresh = generateFilterClient(typedSpec, { name: 'people' });
+    const banner = fresh.split('\n').slice(0, 2).join('\n');
+    expect(clientMatches(`${banner}\n\n${prettierBody}`, fresh)).toBe(true);
+    expect(
+      clientMatches(`${banner}\n\n${prettierBody.replace('age: number', 'age: string')}`, fresh),
+    ).toBe(false);
+  });
+
+  it('a client reformatted with its hash is ok in the doctor; a wrong hash is out of date', async () => {
+    const files = clientFiles();
+    for (const key of Object.keys(files)) {
+      files[key] = (files[key] as string)
+        .replace(/'/g, '"')
+        .replace(/;$/gm, '')
+        .replace(/\n/g, '\n\n');
+    }
+    expect((await run(fakeApp({ filters: manifest, files }).app))[1]).toMatchObject({
+      status: 'ok',
+    });
+
+    const peopleFile = Object.keys(files).find((f) => f.includes('people')) as string;
+    files[peopleFile] = (files[peopleFile] as string).replace(
+      /sha256:[0-9a-f]+/,
+      'sha256:0000000000000000',
+    );
+    const out = await run(fakeApp({ filters: manifest, files }).app);
+    expect(out[1]?.message).toContain('out of date: people_filter_client.ts');
   });
 
   it('codeShape ignores formatting only', () => {
@@ -115,6 +214,14 @@ describe('filter doctor checks', () => {
     expect(codeShape("const a = 'x,y'")).not.toBe(codeShape("const a = 'xy'"));
     expect(codeShape("const a = 'x y'")).not.toBe(codeShape("const a = 'xy'"));
     expect(codeShape('// a, b\nconst x = 1;')).toBe(codeShape('//  a,b\nconst x = 1'));
+    // Quoted identifier keys, quote escapes and a union's leading pipe are formatting too.
+    expect(codeShape('const a = { "b": 1, "c-d": 2 }')).toBe(
+      codeShape("const a = { b: 1, 'c-d': 2 }"),
+    );
+    expect(codeShape('const a = { "b": 1 }')).not.toBe(codeShape('const a = { bb: 1 }'));
+    expect(codeShape("const a = 'it\\'s'")).toBe(codeShape('const a = "it\'s"'));
+    expect(codeShape("type X = 'a' | 'b'")).toBe(codeShape("type X =\n  | 'a'\n  | 'b'"));
+    expect(codeShape('const x = a || b')).not.toBe(codeShape('const x = a | b'));
   });
 
   it('the provider registers the check into agora.doctor from boot()', async () => {
