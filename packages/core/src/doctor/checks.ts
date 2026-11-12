@@ -13,11 +13,58 @@ export const DEFAULT_CLIENT_OUTPUT = 'app/generated/filters';
 const CLIENT_FILE = /_filter_client\.ts$/;
 
 /**
- * The code with formatting erased (whitespace, semicolons, commas, quote style), so a client the app
- * ran its formatter over still compares equal to a fresh generation.
+ * The code with formatting erased outside string literals (whitespace, semicolons, commas, quote
+ * style), so a client the app ran its formatter over still compares equal to a fresh generation,
+ * while any change inside a string literal still counts.
  */
 export function codeShape(code: string): string {
-  return code.replace(/\s+/g, '').replace(/[;,]/g, '').replace(/"/g, "'");
+  let out = '';
+  let quote: string | null = null;
+  let comment: 'line' | 'block' | null = null;
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i] as string;
+    const next = code[i + 1];
+    if (comment === 'line') {
+      if (ch === '\n') comment = null;
+      else if (!/\s/.test(ch)) out += ch;
+      continue;
+    }
+    if (comment === 'block') {
+      if (ch === '*' && next === '/') {
+        comment = null;
+        out += '*/';
+        i++;
+      } else if (!/\s/.test(ch)) out += ch;
+      continue;
+    }
+    if (quote !== null) {
+      if (ch === '\\') {
+        out += ch + (next ?? '');
+        i++;
+      } else if (ch === quote) {
+        out += quote === '`' ? '`' : "'";
+        quote = null;
+      } else {
+        out += ch;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      comment = 'line';
+      out += '//';
+      i++;
+    } else if (ch === '/' && next === '*') {
+      comment = 'block';
+      out += '/*';
+      i++;
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      out += ch === '`' ? '`' : "'";
+    } else if (!/\s/.test(ch) && ch !== ';' && ch !== ',') {
+      out += ch;
+    }
+  }
+  return out;
 }
 
 async function readOrNull(path: string): Promise<string | null> {

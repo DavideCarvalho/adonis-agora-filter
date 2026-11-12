@@ -37,4 +37,9 @@ Add it to CI after the build:
 | --- | --- | --- |
 | `filter.peers` | `@adonisjs/core` and Lucid are in the supported range | error |
 | `filter.agora-siblings` | no 0.x and 1.x `@adonis-agora` libs mixed | warn |
+| `filter.registered` | every installed Agora lib with checks has its provider registered | warn |
 | `filter.manifest` | the `filters` manifest of `config/filter.ts` loads; the clients in `app/generated/filters` match it (none out of date, missing, or left over from a removed spec). Fix with `node ace make:filter-client` | error / warn |
+
+The client comparison starts once you generate clients: with no `*_filter_client.ts` in
+`app/generated/filters` (you don't use codegen, or write them elsewhere), `filter.manifest` only
+checks that the manifest loads.

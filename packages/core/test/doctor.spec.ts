@@ -81,7 +81,13 @@ describe('filter doctor checks', () => {
   it('is ok when the clients match the manifest, even reformatted', async () => {
     const files = clientFiles();
     for (const key of Object.keys(files)) {
-      files[key] = (files[key] as string).replace(/'/g, '"').replace(/;\n/g, '\n');
+      // What a formatter does to code: quote style, semicolons, indentation. Comments stay.
+      files[key] = (files[key] as string)
+        .split('\n')
+        .map((line) =>
+          /^\s*(\/\/|\/\*|\*)/.test(line) ? line : `  ${line.replace(/'/g, '"').replace(/;$/, '')}`,
+        )
+        .join('\n');
     }
     const out = await run(fakeApp({ filters: manifest, files }).app);
     expect(out[1]).toMatchObject({ status: 'ok' });
@@ -105,6 +111,10 @@ describe('filter doctor checks', () => {
   it('codeShape ignores formatting only', () => {
     expect(codeShape("const a = { b: 'c', };\n")).toBe(codeShape('const a = {b: "c"}'));
     expect(codeShape("const a = 'b'")).not.toBe(codeShape("const a = 'c'"));
+    // Changes inside a string literal still count.
+    expect(codeShape("const a = 'x,y'")).not.toBe(codeShape("const a = 'xy'"));
+    expect(codeShape("const a = 'x y'")).not.toBe(codeShape("const a = 'xy'"));
+    expect(codeShape('// a, b\nconst x = 1;')).toBe(codeShape('//  a,b\nconst x = 1'));
   });
 
   it('the provider registers the check into agora.doctor from boot()', async () => {
