@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 1.0.0-rc.3
+
+### Patch Changes
+
+- [#148](https://github.com/DavideCarvalho/adonis-agora-filter/pull/148) [`7ac919c`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/7ac919ceabf41976ae30e42a50c5a6f179502593) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `agora:doctor`'s `filter.manifest` check no longer reports prettier-formatted clients as out of date. Generated clients now carry a `// Content hash: sha256:…` banner line (the hash of what the generator emitted), and the check compares that hash with a fresh generation, so any formatter is fine. Clients generated before this get a more tolerant shape comparison (quoted vs unquoted keys, quote escapes and a union's leading `|` are ignored). Run `node ace make:filter-client` once to add the hash.
+
 ## 1.0.0-rc.2
 
 ### Minor Changes
