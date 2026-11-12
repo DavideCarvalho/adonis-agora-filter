@@ -143,6 +143,8 @@ describe('filter doctor checks', () => {
     expect(out[1]).toMatchObject({ status: 'warn' });
     expect(out[1]?.message).toContain(`clients in ${dir}`);
     expect(out[1]?.message).toContain('missing: posts_filter_client.ts');
+    // The fix regenerates the directory the result is about, not the default output.
+    expect(out[1]?.fix).toBe(`Run \`node ace make:filter-client --output ${dir}\``);
     expect(out[2]).toMatchObject({ status: 'warn' });
     expect(out[2]?.message).toContain(`generated clients are in ${dir}`);
     expect(out[2]?.fix).toContain(`codegen: { output: '${dir}' }`);
@@ -153,13 +155,15 @@ describe('filter doctor checks', () => {
     const { root } = fakeApp({
       files: {
         'a/people_filter_client.ts': code,
+        // A long license header above the banner does not hide it.
+        'h/people_filter_client.ts': `${'// license\n'.repeat(40)}${code}`,
         'b/c/people_filter_client.ts': code,
         'node_modules/x/people_filter_client.ts': code,
         '.cache/people_filter_client.ts': code,
         'skip/people_filter_client.ts': code,
       },
     });
-    expect(await findClientDirs(root, join(root, 'skip'))).toEqual(['a', 'b/c']);
+    expect(await findClientDirs(root, join(root, 'skip'))).toEqual(['a', 'b/c', 'h']);
   });
 
   it('is ok when the clients match the manifest, even reformatted', async () => {

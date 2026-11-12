@@ -56,7 +56,7 @@ export default class MakeFilterClient extends BaseCommand {
     if (!load) return;
     const { manifest } = load;
 
-    const output = this.output ?? load.output.path;
+    const output = this.output?.trim() || load.output.path;
     const outDir = isAbsolute(output) ? output : this.app.makePath(output);
     await mkdir(outDir, { recursive: true });
 
