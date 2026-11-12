@@ -1,5 +1,7 @@
 import type { ApplicationService } from '@adonisjs/core/types';
 import { registerFilterDevTools } from '../src/dev_tools/tools.js';
+import { registerDoctorChecks } from '../src/doctor/agora_doctor.js';
+import { filterDoctorChecks } from '../src/doctor/checks.js';
 import { registerFilterMacros } from '../src/lucid_macros.js';
 import { loadFilterManifest } from '../src/manifest.js';
 
@@ -19,7 +21,7 @@ import { loadFilterManifest } from '../src/manifest.js';
  * const page = await User.query().filterPaginate(userFilter, ctx)
  * ```
  *
- * It also registers the filter developer tools on `@adonis-agora/agent`'s dev MCP endpoint when
+ * It also registers the `agora:doctor` checks, and the filter developer tools on `@adonis-agora/agent`'s dev MCP endpoint when
  * that is installed.
  *
  * Register it in `adonisrc.ts` (`providers`). The free functions
@@ -31,6 +33,7 @@ export default class FilterProvider {
   constructor(protected app: ApplicationService) {}
 
   async boot() {
+    await registerDoctorChecks(this.app.container as never, filterDoctorChecks());
     const { ModelQueryBuilder } = await import('@adonisjs/lucid/orm');
     registerFilterMacros(ModelQueryBuilder);
     await this.#registerDevTools();

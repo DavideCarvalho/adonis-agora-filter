@@ -32,6 +32,8 @@ jobs:
 
       - run: pnpm check:package
 
+      - run: pnpm check:agora-doctor
+
   # The suite runs on Node 24 and 26 (`engines.node: ">=24"`). Lint, typecheck, build and the
   # release stay on the single pinned 24 — they do not depend on the runtime.
   test:

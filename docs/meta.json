@@ -9,6 +9,7 @@
     "search",
     "codegen",
     "mcp-tools",
+    "doctor",
     "testing",
     "migrating-to-1-0"
   ],
