@@ -1,7 +1,11 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ApplicationService } from '@adonisjs/core/types';
-import { generateFilterClients } from '../generate_client.js';
+import {
+  CONTENT_HASH_PREFIX,
+  generateFilterClients,
+  readFilterClientContentHash,
+} from '../generate_client.js';
 import { loadFilterManifest } from '../manifest.js';
 import type { AgoraDoctorCheck, AgoraDoctorResult } from './agora_doctor.js';
 
@@ -14,12 +18,15 @@ const CLIENT_FILE = /_filter_client\.ts$/;
 
 /**
  * The code with formatting erased outside string literals (whitespace, semicolons, commas, quote
- * style), so a client the app ran its formatter over still compares equal to a fresh generation,
- * while any change inside a string literal still counts.
+ * style and escapes, quotes around identifier-like object keys, a union's leading `|`), so a
+ * client the app ran its formatter over still compares equal to a fresh generation, while any
+ * change inside a string literal still counts. Only the fallback for clients generated before the
+ * banner carried a content hash (see {@link clientMatches}).
  */
 export function codeShape(code: string): string {
   let out = '';
   let quote: string | null = null;
+  let literalStart = 0;
   let comment: 'line' | 'block' | null = null;
   for (let i = 0; i < code.length; i++) {
     const ch = code[i] as string;
@@ -39,10 +46,21 @@ export function codeShape(code: string): string {
     }
     if (quote !== null) {
       if (ch === '\\') {
-        out += ch + (next ?? '');
+        // `\'` and `\"` are the same character whichever quote the formatter picked.
+        out += next === "'" || next === '"' ? next : ch + (next ?? '');
         i++;
       } else if (ch === quote) {
-        out += quote === '`' ? '`' : "'";
+        const content = out.slice(literalStart + 1);
+        // `{ "age": 1 }` and `{ age: 1 }` are the same object (prettier's quoteProps).
+        if (
+          quote !== '`' &&
+          /^[A-Za-z_$][\w$]*$/.test(content) &&
+          /^\s*:/.test(code.slice(i + 1))
+        ) {
+          out = out.slice(0, literalStart) + content;
+        } else {
+          out += quote === '`' ? '`' : "'";
+        }
         quote = null;
       } else {
         out += ch;
@@ -59,12 +77,33 @@ export function codeShape(code: string): string {
       i++;
     } else if (ch === '"' || ch === "'" || ch === '`') {
       quote = ch;
+      literalStart = out.length;
       out += ch === '`' ? '`' : "'";
+    } else if (ch === '|' && next !== '|' && /[=(<:]$/.test(out)) {
+      // A union broken over lines gains a leading `|` (`type X =\n  | 'a'\n  | 'b'`).
     } else if (!/\s/.test(ch) && ch !== ';' && ch !== ',') {
       out += ch;
     }
   }
   return out;
+}
+
+/**
+ * Whether a generated client on disk still matches a fresh generation. Clients carry the hash of
+ * what the generator emitted in their banner (a line comment no formatter touches), so the hashes
+ * are compared and any reformatting of the code is irrelevant. A client without the hash (written
+ * before it existed, or with `banner: false`) falls back to comparing {@link codeShape}s.
+ */
+export function clientMatches(onDisk: string, fresh: string): boolean {
+  const hash = readFilterClientContentHash(onDisk);
+  const expected = readFilterClientContentHash(fresh);
+  if (hash !== null && expected !== null) return hash === expected;
+  const withoutHash = (code: string): string =>
+    code
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith(CONTENT_HASH_PREFIX))
+      .join('\n');
+  return codeShape(withoutHash(onDisk)) === codeShape(withoutHash(fresh));
 }
 
 async function readOrNull(path: string): Promise<string | null> {
@@ -138,7 +177,7 @@ export function filterDoctorChecks(): AgoraDoctorCheck[] {
         for (const client of generated) {
           const current = await readOrNull(join(dir, client.filename));
           if (current === null) missing.push(client.filename);
-          else if (codeShape(current) !== codeShape(client.code)) stale.push(client.filename);
+          else if (!clientMatches(current, client.code)) stale.push(client.filename);
         }
         const expected = new Set(generated.map((client) => client.filename));
         const orphaned = onDisk.filter((file) => !expected.has(file));

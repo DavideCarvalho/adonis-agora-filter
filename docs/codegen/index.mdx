@@ -54,7 +54,7 @@ A `FilterSpec` carries the allow-list but not column value **types** (Lucid mode
 | `{ typeRef: 'Role' }` | the named type verbatim (wins over everything) |
 | `{ nullable: true }` | appends `\| null` |
 
-Options: `name` (base identifier), `fieldTypes`, `clientModule` (import specifier, default `@adonis-agora/filter-client`), `maxDepth` (relation-path cap, default `spec.maxDepth`), `banner` (the "DO NOT EDIT" header, default `true`).
+Options: `name` (base identifier), `fieldTypes`, `clientModule` (import specifier, default `@adonis-agora/filter-client`), `maxDepth` (relation-path cap, default `spec.maxDepth`), `banner` (the "DO NOT EDIT" header plus the `// Content hash:` line `agora:doctor` compares, default `true`).
 
 <Callout type="info">
 `filterableFieldPaths(spec)` and `sortableFieldPaths(spec)` are exported if you just want the enumerated field-path lists (e.g. to build your own artifact). A `'*'` allow-list can't be enumerated, so the emitter falls back to a permissive `string` field union.
