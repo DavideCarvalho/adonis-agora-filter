@@ -1,0 +1,52 @@
+---
+title: CLI
+description: List your filter specs, read one in full and dry-run a query string against it from the terminal with node ace, no database needed.
+icon: SquareTerminal
+---
+
+What the [MCP tools](/docs/filter/mcp-tools) answer is also an ace command. They read the `filters`
+manifest of `config/filter.ts`, the same one [`make:filter-client`](/docs/filter/codegen) reads.
+
+| Command | What it does |
+| --- | --- |
+| `filter:specs:list` | the specs of the manifest, with field counts, searchable fields and relations |
+| `filter:specs:show <name>` | one spec in full: filterable and sortable paths, field types, aliases, relations, tenant column, defaults |
+| `filter:query:explain <name> <query>` | a dry run of a query string: what the server parses, what is dropped or refused and why, the query-builder calls and the page and size |
+| `make:filter <name>` | [scaffold a filter class](/docs/filter/definitions) |
+| `make:filter-client` | [generate the typed clients](/docs/filter/codegen) |
+| `filter:doctor` | [health check](/docs/filter/doctor) |
+
+## Specs
+
+```bash
+node ace filter:specs:list
+node ace filter:specs:list --size=20 --page=2
+node ace filter:specs:show users
+node ace filter:specs:show users --json
+```
+
+## Explaining a query string
+
+```bash
+node ace filter:query:explain users 'filter[email][contains]=acme&sort=-createdAt&page=2'
+node ace filter:query:explain users '?filter[email][eq]=x' --json
+```
+
+Quote the query string: shells read `&` and `[]` themselves. The leading `?` is optional.
+
+The command never touches the database. The tenant scope is applied from the request at run time,
+so the output names the tenant column but not its value.
+
+## Flags
+
+| Flag | On | |
+| --- | --- | --- |
+| `--json` | every command | print JSON: `filter:specs:list` as `{ data, meta }`, the others as the object the MCP tool returns |
+| `--page=<n>` | `filter:specs:list` | page number, from 1 |
+| `--size=<n>` | `filter:specs:list` | specs per page (default 50, at most 500) |
+
+## Exit codes
+
+Every command exits with `1` when the manifest cannot be read, the spec does not exist or a flag is
+invalid. `filter:query:explain` also exits with `1` when the request would be refused, so you can
+use it in a script or in CI.

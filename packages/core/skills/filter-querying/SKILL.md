@@ -318,5 +318,18 @@ sequential scan on anything big.
 
 Source: docs/search/full-text.mdx (text-columns warning)
 
+## From the terminal
+
+Dry-run a query string against a spec of the `filters` manifest, with no database:
+
+```bash
+node ace filter:query:explain users 'filter[email][contains]=acme&sort=-name'
+node ace filter:specs:show users --json   # the allow-lists, aliases, relations
+```
+
+`filter:query:explain` exits with 1 when the request would be refused.
+
+Source: docs/cli.mdx
+
 See also: `../filter-definitions/SKILL.md` (where fullText/vectorSimilarity are
 declared), `../filter-safety/SKILL.md` (the allow-list these paths respect).
