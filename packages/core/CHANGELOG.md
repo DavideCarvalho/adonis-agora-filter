@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 1.0.0-rc.5
+
+### Minor Changes
+
+- [#152](https://github.com/DavideCarvalho/adonis-agora-filter/pull/152) [`8b3a205`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/8b3a205ff43b36917032c65d06face9cfb7d874a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - List API helpers for any backend: `offsetPage(rows, { total, page, size })` and `cursorPage(rows, { nextCursor, prevCursor, hasNext, hasPrev })` / `cursorPage(buildCursorPage(...), map?)` build the `{ data, meta }` list envelopes; `parsePageParams(qs, { defaultSize, maxSize })` and `parseCursorParams(qs, { defaultSize, maxSize })` read paging params from a query string; `resolveSort(sort, { sortable, default })` checks a sort against an allow-list and throws `InvalidColumnFilterError` for anything else. Types `OffsetPage`, `OffsetPageMeta`, `CursorPageResponse`, `CursorPageMeta`, `PageParams`, `ParsedCursorParams` are exported. `readCursorParams(qs)` exposes the raw `after`/`before`/`first`/`last` read `applyCursorFromRequest` uses.
+
 ## 1.0.0-rc.4
 
 ### Patch Changes

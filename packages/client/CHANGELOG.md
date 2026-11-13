@@ -1,5 +1,11 @@
 # @adonis-agora/filter-client
 
+## 1.0.0-rc.1
+
+### Minor Changes
+
+- [#152](https://github.com/DavideCarvalho/adonis-agora-filter/pull/152) [`8b3a205`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/8b3a205ff43b36917032c65d06face9cfb7d874a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Cursor pagination on the builder: `.after(cursor)`, `.before(cursor)`, `.first(n)`, `.last(n)` (plain and typed builders), serialized by `toQueryString()` and `build()`. Offset (`.page()`) and cursor paging are mutually exclusive: whichever was set last wins. New response types `OffsetPage<T>`, `OffsetPageMeta`, `CursorPageResponse<T>`, `CursorPageMeta`, plus `CursorPagination`.
+
 ## 1.0.0-rc.0
 
 ### Major Changes

@@ -1,5 +1,5 @@
 /** Keep in sync with this package's `version` in package.json. */
-export const VERSION = '1.0.0-rc.4';
+export const VERSION = '1.0.0-rc.5';
 
 /**
  * The hook `node ace add @adonis-agora/filter` runs: ace looks for `configure` on the package's
