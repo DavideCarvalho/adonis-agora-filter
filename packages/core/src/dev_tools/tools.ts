@@ -42,7 +42,8 @@ export function pageOf<T>(items: readonly T[], input: Record<string, unknown>) {
   };
 }
 
-function problem(load: Exclude<ManifestLoad, { status: 'loaded' }>): string {
+/** Why the manifest could not be read, as one sentence for a person. */
+export function manifestProblem(load: Exclude<ManifestLoad, { status: 'loaded' }>): string {
   switch (load.status) {
     case 'missing':
       return `No ${load.entrypoint.replace(/\.js$/, '.ts')}: declare an exported \`filters\` manifest there to list your specs.`;
@@ -55,18 +56,69 @@ function problem(load: Exclude<ManifestLoad, { status: 'loaded' }>): string {
 
 async function manifestOrThrow(deps: FilterDevToolsDeps): Promise<FilterClientManifest> {
   const load = await deps.manifest();
-  if (load.status !== 'loaded') throw new Error(problem(load));
+  if (load.status !== 'loaded') throw new Error(manifestProblem(load));
   return load.manifest;
 }
 
-async function entryOf(deps: FilterDevToolsDeps, input: Record<string, unknown>) {
-  const key = typeof input.name === 'string' ? input.name.trim() : '';
+async function entryOf(deps: FilterDevToolsDeps, name: unknown) {
+  const key = typeof name === 'string' ? name.trim() : '';
   if (key === '') throw new Error('`name` is required: a spec name from filter_list_specs');
   const manifest = await manifestOrThrow(deps);
   if (!Object.hasOwn(manifest, key)) {
     throw new Error(`No spec "${key}". Known: ${Object.keys(manifest).sort().join(', ')}`);
   }
   return { key, entry: manifest[key] as FilterClientManifest[string] };
+}
+
+/** One row of {@link listFilterSpecs}. */
+export interface FilterSpecSummary {
+  name: string;
+  filterable: number | '*';
+  sortable: number | '*';
+  searchable: string[];
+  relations: string[];
+  tenantScoped: boolean;
+}
+
+/**
+ * Every spec of the `filters` manifest, sorted by name, as `filter_list_specs` and
+ * `filter:specs:list` show them. A manifest that cannot be read gives no specs and a `hint`.
+ */
+export async function listFilterSpecs(
+  deps: FilterDevToolsDeps,
+): Promise<{ items: FilterSpecSummary[]; hint?: string }> {
+  const load = await deps.manifest();
+  if (load.status !== 'loaded') return { items: [], hint: manifestProblem(load) };
+  const items = Object.entries(load.manifest)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, entry]): FilterSpecSummary => {
+      const spec = describeSpec(entry.spec, key);
+      return {
+        name: key,
+        filterable: spec.filterable === '*' ? '*' : spec.filterablePaths.length,
+        sortable: spec.sortable === '*' ? '*' : spec.sortablePaths.length,
+        searchable: spec.searchable,
+        relations: Object.keys(spec.relations),
+        tenantScoped: spec.tenantColumn !== null,
+      };
+    });
+  return { items };
+}
+
+/** One spec in full (`filter_get_spec`, `filter:specs:show`). Throws on an unknown name. */
+export async function getFilterSpec(deps: FilterDevToolsDeps, name: unknown) {
+  const { key, entry } = await entryOf(deps, name);
+  return { ...describeSpec(entry.spec, key), clientFieldTypes: entry.fieldTypes ?? {} };
+}
+
+/** Dry run of a query string against a spec (`filter_explain_query`, `filter:query:explain`). */
+export async function explainFilterSpecQuery(
+  deps: FilterDevToolsDeps,
+  name: unknown,
+  query: unknown,
+) {
+  const { key, entry } = await entryOf(deps, name);
+  return { spec: key, ...explainFilterQuery(entry.spec, typeof query === 'string' ? query : '') };
 }
 
 /** The filter developer tools (all read-only, no database). */
@@ -80,22 +132,8 @@ export function filterDevTools(deps: FilterDevToolsDeps): DevTool[] {
         'filterable/sortable fields, searchable fields and relations. Paged: { items, next }.',
       input: { type: 'object', properties: { limit, page } },
       async run(input) {
-        const load = await deps.manifest();
-        if (load.status !== 'loaded') return { items: [], next: null, hint: problem(load) };
-        const items = Object.entries(load.manifest)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, entry]) => {
-            const spec = describeSpec(entry.spec, key);
-            return {
-              name: key,
-              filterable: spec.filterable === '*' ? '*' : spec.filterablePaths.length,
-              sortable: spec.sortable === '*' ? '*' : spec.sortablePaths.length,
-              searchable: spec.searchable,
-              relations: Object.keys(spec.relations),
-              tenantScoped: spec.tenantColumn !== null,
-            };
-          });
-        return pageOf(items, input);
+        const { items, hint } = await listFilterSpecs(deps);
+        return hint === undefined ? pageOf(items, input) : { items, next: null, hint };
       },
     },
     {
@@ -107,8 +145,7 @@ export function filterDevTools(deps: FilterDevToolsDeps): DevTool[] {
         'column, default filters/sort and page sizes.',
       input: { type: 'object', properties: { name }, required: ['name'] },
       async run(input) {
-        const { key, entry } = await entryOf(deps, input);
-        return { ...describeSpec(entry.spec, key), clientFieldTypes: entry.fieldTypes ?? {} };
+        return getFilterSpec(deps, input.name);
       },
     },
     {
@@ -130,9 +167,7 @@ export function filterDevTools(deps: FilterDevToolsDeps): DevTool[] {
         required: ['name', 'query'],
       },
       async run(input) {
-        const { key, entry } = await entryOf(deps, input);
-        const query = typeof input.query === 'string' ? input.query : '';
-        return { spec: key, ...explainFilterQuery(entry.spec, query) };
+        return explainFilterSpecQuery(deps, input.name, input.query);
       },
     },
   ];
