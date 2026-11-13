@@ -51,6 +51,11 @@ const qs = filterQuery()
 await fetch(`/users?${qs}`)
 ```
 
+Cursor-paged endpoints take `.after(meta.nextCursor)` / `.before(meta.prevCursor)`
+plus `.first(n)` / `.last(n)` instead of `.page()`. The two styles are mutually
+exclusive: whichever was set last wins. Response types: `OffsetPage<T>`,
+`CursorPageResponse<T>`.
+
 ## Core patterns
 
 ### 1. `where` replaces; convenience methods delegate; `add` accumulates

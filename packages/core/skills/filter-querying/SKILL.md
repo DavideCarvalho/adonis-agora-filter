@@ -38,7 +38,7 @@ projects the values that exist under the current filters.
 ```typescript
 // app/controllers/users_controller.ts
 import type { HttpContext } from '@adonisjs/core/http'
-import { applyCursorFromRequest, buildCursorPage } from '@adonis-agora/filter'
+import { applyCursorFromRequest, buildCursorPage, cursorPage } from '@adonis-agora/filter'
 import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
@@ -52,16 +52,19 @@ export default class UsersController {
     const rows = await query.exec()
     const page = buildCursorPage(rows.map((r) => r.serialize()), resolved)
 
-    return {
-      data: page.items,
-      nextCursor: page.nextCursor,
-      prevCursor: page.prevCursor,
-      hasNext: page.hasNext,
-      hasPrev: page.hasPrev,
-    }
+    // { data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }
+    return cursorPage(page)
   }
 }
 ```
+
+List endpoints return `{ data, meta }`: `offsetPage(rows, { total, page, size })`
+for offset, `cursorPage(rows, { nextCursor, prevCursor })` or `cursorPage(page)`
+for cursor. For stores that are not Lucid, read params with
+`parsePageParams(qs, { defaultSize, maxSize })` / `parseCursorParams(qs, …)`
+(→ `{ after?, before?, size, backward }`) and check the sort with
+`resolveSort(input.sort, { sortable, default })`, which throws
+`InvalidColumnFilterError` (→ 400) for a field outside `sortable`.
 
 Cursor params arrive as `after`/`before`/`first`/`last` (or JSON:API
 `page[after]`…). `after` wins if both bounds are sent. Filters, search, and sort

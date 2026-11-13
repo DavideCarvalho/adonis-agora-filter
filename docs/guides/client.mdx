@@ -151,12 +151,45 @@ The same goes for `select` (JSON:API sparse fieldsets) — it is parsed, never a
 `.page(page, size)` numbers pages from `1`, the same as the server and Lucid's `paginate()`: `.page(1, 25)` is the first page. A `page` or `size` below `1`, or one that is not an integer, throws a `RangeError`.
 </Callout>
 
+## Cursor pagination
+
+Endpoints that page by cursor take `after` / `before` (the opaque cursors the previous response
+returned) and `first` / `last` (page sizes) instead of `page` / `size`:
+
+```ts
+import { filterQuery, type CursorPageResponse } from '@adonis-agora/filter-client'
+
+const query = filterQuery().where('status', 'failed').sortDesc('createdAt').first(50)
+
+const page: CursorPageResponse<Run> = await fetch(`/runs?${query.toQueryString()}`).then((r) => r.json())
+// page.meta → { nextCursor, prevCursor, hasNext, hasPrev }
+
+// Next page:
+if (page.meta.nextCursor) query.after(page.meta.nextCursor)
+// Previous page:
+if (page.meta.prevCursor) query.before(page.meta.prevCursor).last(50)
+```
+
+| Method | Sends | Replaces |
+|---|---|---|
+| `.after(cursor)` | `after=…` | `before`, and any `.page()` |
+| `.before(cursor)` | `before=…` | `after`, and any `.page()` |
+| `.first(n)` | `first=n` | `last`, and any `.page()` |
+| `.last(n)` | `last=n` | `first`, and any `.page()` |
+
+An endpoint pages one way or the other, so offset and cursor pagination are mutually exclusive on
+the builder: **whichever was set last wins**. `.page()` drops every cursor param, and any cursor
+method drops `page` / `size`. `build()` puts the cursor params at the top level
+(`{ filter, after, first }`). An empty cursor throws a `TypeError`; a size that is not an integer
+of at least `1` throws a `RangeError`. Treat cursors as opaque: only pass back what the server
+returned.
+
 ## Output formats
 
 | Terminator | Returns | Use for |
 |---|---|---|
 | `toQueryString()` | a `&`-joined query string | `GET` endpoint URLs |
-| `build()` | a `FilterQueryResult` object — `{ filter: { where }, sort, paginate, include, search, distinct }` | `POST` search bodies |
+| `build()` | a `FilterQueryResult` object — `{ filter: { where }, sort, paginate, after, before, first, last, include, search, distinct }` | `POST` search bodies |
 | `toFlatObject()` | a flat `{ field: value \| { op: value } }` map | the `filter` bag of a flat request; **drops groups** |
 
 ```ts
@@ -420,7 +453,9 @@ assertions.
 
 | Export | What it is |
 |---|---|
-| `FilterQueryResult`, `SortItem`, `OffsetPagination` | the shapes `build()` returns |
+| `FilterQueryResult`, `SortItem`, `OffsetPagination`, `CursorPagination` | the shapes `build()` returns |
+| `OffsetPage<T>`, `OffsetPageMeta` | an offset list response: `{ data, meta: { total, perPage, currentPage, lastPage, firstPage } }` |
+| `CursorPageResponse<T>`, `CursorPageMeta` | a cursor list response: `{ data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }` |
 | `ColumnFilter`, `FilterOperator`, `FILTER_OPERATORS` | one condition, the operator union, and the runtime list of every operator |
 | `TypedFilterQuery`, `TypedFilterQueryBuilder` | the generated typed builder's interface — what [`make:filter-client`](/docs/filter/codegen) emits against |
 | `FieldTypeKind`, `FilterFieldTypes` | the field-kind declarations that drive per-field operator narrowing |

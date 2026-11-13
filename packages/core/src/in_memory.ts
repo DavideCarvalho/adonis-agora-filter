@@ -4,6 +4,7 @@ import {
   type CursorParams,
   type ResolvedCursor,
 } from './cursor.js';
+import { type OffsetPage, type OffsetPageMeta, offsetPage } from './list_api.js';
 import type { QueryBuilderLike } from './lucid_adapter.js';
 import { applyCursor, applyFilter, type CursorConfig } from './runner.js';
 import type { FilterConfig, FilterFieldKind, FilterInput, SortItem } from './types.js';
@@ -344,19 +345,10 @@ interface Clause<T> {
 }
 
 /** The pagination meta {@link InMemoryQueryBuilder.paginate} returns — Lucid's paginator fields. */
-export interface InMemoryPageMeta {
-  total: number;
-  perPage: number;
-  currentPage: number;
-  lastPage: number;
-  firstPage: number;
-}
+export type InMemoryPageMeta = OffsetPageMeta;
 
 /** One offset page — the shape of a serialized Lucid paginator (`{ meta, data }`). */
-export interface InMemoryPage<T> {
-  data: T[];
-  meta: InMemoryPageMeta;
-}
+export type InMemoryPage<T> = OffsetPage<T>;
 
 /**
  * A {@link QueryBuilderLike} over an array. Created by {@link InMemoryCollection.query}; hand it to
@@ -918,17 +910,11 @@ export class InMemoryQueryBuilder<T extends object> implements QueryBuilderLike 
     const size = Math.max(1, Math.floor(perPage));
     const current = Math.max(1, Math.floor(page));
     const rows = this.evaluate();
-    const total = rows.length;
-    return {
-      data: rows.slice((current - 1) * size, current * size),
-      meta: {
-        total,
-        perPage: size,
-        currentPage: current,
-        lastPage: Math.max(1, Math.ceil(total / size)),
-        firstPage: 1,
-      },
-    };
+    return offsetPage(rows.slice((current - 1) * size, current * size), {
+      total: rows.length,
+      page: current,
+      size,
+    });
   }
 
   /**

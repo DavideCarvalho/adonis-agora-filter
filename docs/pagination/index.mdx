@@ -1,7 +1,7 @@
 ---
 title: Cursor Pagination
 icon: Layers
-description: Keyset (cursor) pagination — applyCursor / applyCursorFromRequest build a stable, seek-based page from the sort + a primary-key tiebreaker; buildCursorPage assembles the page and its opaque forward/backward cursors.
+description: Offset and keyset (cursor) pagination — the list response envelopes, the request-param helpers, and applyCursor / applyCursorFromRequest + buildCursorPage for stable, seek-based pages.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
@@ -12,6 +12,48 @@ Offset pagination (`applyFilter` → `page`/`size`) is simple but drifts as rows
 <Callout type="info">
 Cursor pagination goes through the **same allow-list boundary** as `applyFilter` — filters, search, and sort are validated and pruned identically. Only the paging mechanism differs.
 </Callout>
+
+## List responses
+
+Every list endpoint returns one of two envelopes, with the rows always under `data`:
+
+```json title="Offset"
+{ "data": [...], "meta": { "total": 120, "perPage": 50, "currentPage": 1, "lastPage": 3, "firstPage": 1 } }
+```
+
+```json title="Cursor"
+{ "data": [...], "meta": { "nextCursor": "…", "prevCursor": null, "hasNext": true, "hasPrev": false } }
+```
+
+A Lucid `query.paginate(page, size)` already serializes to the offset shape. For any other store,
+build the envelope with the helpers:
+
+| Export | Role |
+|---|---|
+| `parsePageParams(qs, { defaultSize, maxSize })` | `page` (1-based) + `size` → `{ page, size }`; junk falls back to defaults, values are clamped. |
+| `offsetPage(rows, { total, page, size })` | The offset envelope (`OffsetPage<T>`); `lastPage` is at least `1`. |
+| `parseCursorParams(qs, { defaultSize, maxSize })` | `after` / `before` + `first` / `last` → `{ after?, before?, size, backward }`; `after` wins over `before`. |
+| `cursorPage(rows, { nextCursor, prevCursor, hasNext?, hasPrev? })` | The cursor envelope (`CursorPageResponse<T>`). |
+| `cursorPage(page, map?)` | The same, from a `CursorPage` returned by `buildCursorPage`, optionally mapping each item. |
+| `resolveSort(input.sort, { sortable, default })` | Checks the sort against an allow-list (throws `InvalidColumnFilterError` → `400`), or returns the default order. |
+
+```ts title="app/controllers/reports_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { offsetPage, parsePageParams } from '@adonis-agora/filter'
+
+export default class ReportsController {
+  async index({ request }: HttpContext) {
+    const { page, size } = parsePageParams(request.qs(), { defaultSize: 50, maxSize: 200 })
+    const { rows, total } = await reports.list({ offset: (page - 1) * size, limit: size })
+    return offsetPage(rows, { total, page, size })
+  }
+}
+```
+
+See [Custom Backends](/docs/filter/guides/custom-backends#serving-the-list-over-http) for an
+end-to-end endpoint with filtering, sort and both paging styles, and the
+[client guide](/docs/filter/guides/client#cursor-pagination) for `.after()` / `.before()` /
+`.first()` / `.last()`.
 
 ## The building blocks
 
@@ -29,7 +71,7 @@ The idiomatic path. Same spec you use for offset, cursor params instead of `page
 
 ```ts title="app/controllers/users_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { applyCursorFromRequest, buildCursorPage } from '@adonis-agora/filter'
+import { applyCursorFromRequest, buildCursorPage, cursorPage } from '@adonis-agora/filter'
 import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
@@ -46,13 +88,8 @@ export default class UsersController {
       resolved,
     )
 
-    return {
-      data: page.items,
-      nextCursor: page.nextCursor, // opaque string, or null on the last page
-      prevCursor: page.prevCursor,
-      hasNext: page.hasNext,
-      hasPrev: page.hasPrev,
-    }
+    // { data, meta: { nextCursor, prevCursor, hasNext, hasPrev } } — a cursor is null at the end
+    return cursorPage(page)
   }
 }
 ```
@@ -65,25 +102,35 @@ Without a spec, drive the runner directly with a `FilterInput` + cursor params:
 
 ```ts title="app/controllers/audit_logs_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
-import { applyCursor, buildCursorPage, parseFilterRequest } from '@adonis-agora/filter'
+import {
+  applyCursor,
+  buildCursorPage,
+  cursorPage,
+  parseCursorParams,
+  parseFilterRequest,
+} from '@adonis-agora/filter'
 import AuditLog from '#models/audit_log'
 
 export default class AuditLogsController {
   async index({ request }: HttpContext) {
     const query = AuditLog.query()
+    const qs = request.qs()
+    const { after, before, size } = parseCursorParams(qs, { defaultSize: 20, maxSize: 100 })
 
     const resolved = applyCursor(
       query,
-      { ...parseFilterRequest(request.qs()), after: request.input('after'), first: 20 },
+      { ...parseFilterRequest(qs), after, before, first: size, last: size },
       { allowed: ['action', 'actorId'], sortable: ['createdAt'], primaryKey: 'id' },
     )
     // resolved: { keyset, size, backward, hasCursor }
 
     const rows = await query.exec()
 
-    return buildCursorPage(
-      rows.map((row) => row.serialize()),
-      resolved,
+    return cursorPage(
+      buildCursorPage(
+        rows.map((row) => row.serialize()),
+        resolved,
+      ),
     )
   }
 }
