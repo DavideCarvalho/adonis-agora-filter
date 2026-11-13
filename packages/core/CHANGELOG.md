@@ -1,5 +1,11 @@
 # @adonis-agora/filter
 
+## 1.0.0-rc.6
+
+### Minor Changes
+
+- [#154](https://github.com/DavideCarvalho/adonis-agora-filter/pull/154) [`84b8c39`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/84b8c3989742363fff500e2fad8b4f58ebb574cd) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - New ace commands for what the dev MCP tools answer: `filter:specs:list` (`--page`, `--size`, `--json` as `{ data, meta }`), `filter:specs:show <name>` and `filter:query:explain <name> <query>` (exits with 1 when the request would be refused). They run the same code as the `filter_*` tools.
+
 ## 1.0.0-rc.5
 
 ### Minor Changes
