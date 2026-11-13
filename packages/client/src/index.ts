@@ -9,12 +9,19 @@ export type {
   ValueForOp,
 } from './field-types.js';
 export type {
+  CursorPagination,
   FilterQueryResult,
   GroupByCountSpec,
   OffsetPagination,
   SortItem,
 } from './filter-query-builder.js';
 export { FilterQueryBuilder, filterQuery } from './filter-query-builder.js';
+export type {
+  CursorPageMeta,
+  CursorPageResponse,
+  OffsetPage,
+  OffsetPageMeta,
+} from './list-response.js';
 export { columnFiltersToQueryString, flatObjectToQueryString } from './to-query-string.js';
 export type { TypedFilterQuery } from './typed-filter-query.js';
 export type { TypedFilterQueryBuilder } from './typed-filter-query-builder.js';

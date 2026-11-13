@@ -14,4 +14,8 @@ export type TypedFilterQuery<
   sort?: Array<{ field: Fields; direction: 'asc' | 'desc' }>;
   distinct?: Fields[];
   paginate?: { page: number; size: number };
+  after?: string;
+  before?: string;
+  first?: number;
+  last?: number;
 };

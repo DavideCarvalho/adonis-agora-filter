@@ -7,6 +7,7 @@ import {
   specFromFilterClass,
 } from './filter_class.js';
 import { type FilterSpec, specToFilterConfig } from './filter_spec.js';
+import { readCursorParams } from './list_api.js';
 import { applyColumnFilters, type QueryBuilderLike } from './lucid_adapter.js';
 import type { ColumnFilter } from './operators.js';
 import { parseFilterRequest } from './parse_request.js';
@@ -239,34 +240,6 @@ async function applyFilterClass(
   return pagination;
 }
 
-/** Parse cursor (keyset) params from a decoded query string (Spatie `page[...]` shapes). */
-function parseCursorParams(qs: Record<string, unknown>): CursorParams {
-  const out: CursorParams = {};
-  const page =
-    qs.page != null && typeof qs.page === 'object' && !Array.isArray(qs.page)
-      ? (qs.page as Record<string, unknown>)
-      : undefined;
-
-  const after = qs.after ?? page?.after;
-  const before = qs.before ?? page?.before;
-  if (typeof after === 'string' && after.length > 0) out.after = after;
-  else if (typeof before === 'string' && before.length > 0) out.before = before;
-
-  const first = qs.first ?? page?.first;
-  const last = qs.last ?? page?.last;
-  const toInt = (v: unknown): number | undefined => {
-    const n =
-      typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : Number.NaN;
-    return Number.isFinite(n) ? n : undefined;
-  };
-  const f = toInt(first);
-  const l = toInt(last);
-  if (f !== undefined) out.first = f;
-  if (l !== undefined) out.last = l;
-
-  return out;
-}
-
 /**
  * The keyset (cursor) counterpart of {@link applyFilterFromRequest}. Sources the
  * request filters and the `after`/`before`/`first`/`last` cursor params from ctx,
@@ -283,7 +256,7 @@ export function applyCursorFromRequest(
   const parsed = options.input ?? parseFilterRequest(qs);
   const full: FilterInput & CursorParams = {
     ...withDefaultSort(parsed, spec),
-    ...parseCursorParams(qs),
+    ...readCursorParams(qs),
   };
   applyServerScope(query, spec, ctx);
   const config: CursorConfig = {

@@ -66,6 +66,116 @@ Two things, both load-bearing:
 `OR` groups are rejected for the same reason: a draft is an ANDed predicate bag and cannot
 express cross-field OR. `AND` groups recurse.
 
+## Serving the list over HTTP
+
+Every list endpoint speaks the same wire format, whatever the store behind it:
+
+| Concern | Request | Helper |
+|---|---|---|
+| Filter | `filter[field]=v`, `filter[field][op]=v` | `applyCustomFilter(draft, XFilter, ctx)` |
+| Sort | `sort=-createdAt,name` | `resolveSort(input.sort, { sortable, default })` |
+| Offset paging | `page` (1-based) + `size` | `parsePageParams(qs, { defaultSize, maxSize })` → `offsetPage(rows, { total, page, size })` |
+| Cursor paging | `after` / `before` + `first` / `last` | `parseCursorParams(qs, { defaultSize, maxSize })` → `cursorPage(rows, { nextCursor, prevCursor })` |
+
+An endpoint pages one way: offset when the store can count the matching set, cursor for feeds and
+stores that cannot count. An unknown filter field, operator or sort field throws
+`InvalidColumnFilterError` — map it to a `400`.
+
+### Offset paging
+
+```ts title="app/controllers/runs_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import {
+  applyCustomFilter,
+  InvalidColumnFilterError,
+  offsetPage,
+  parseFilterRequest,
+  parsePageParams,
+  resolveSort,
+} from '@adonis-agora/filter'
+
+export default class RunsController {
+  async index(ctx: HttpContext) {
+    const qs = ctx.request.qs()
+    try {
+      const draft = new RunQueryDraft()
+      await applyCustomFilter(draft, RunFilter, ctx)
+
+      const sort = resolveSort(parseFilterRequest(qs).sort, {
+        sortable: ['createdAt', 'name'],
+        default: '-createdAt',
+      })
+      const { page, size } = parsePageParams(qs, { defaultSize: 50, maxSize: 200 })
+
+      const { rows, total } = await store.listRuns(draft.query, {
+        sort,
+        offset: (page - 1) * size,
+        limit: size,
+      })
+      return offsetPage(rows, { total, page, size })
+      // → { data, meta: { total, perPage, currentPage, lastPage, firstPage } }
+    } catch (error) {
+      if (error instanceof InvalidColumnFilterError) {
+        return ctx.response.badRequest({ message: error.message })
+      }
+      throw error
+    }
+  }
+}
+```
+
+### Cursor paging
+
+```ts title="app/controllers/events_controller.ts"
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyCustomFilter, cursorPage, parseCursorParams } from '@adonis-agora/filter'
+
+export default class EventsController {
+  async index(ctx: HttpContext) {
+    const draft = new EventQueryDraft()
+    await applyCustomFilter(draft, EventFilter, ctx)
+
+    const { after, before, size } = parseCursorParams(ctx.request.qs(), {
+      defaultSize: 100,
+      maxSize: 500,
+    })
+
+    const result = await store.listEvents(draft.query, { after, before, limit: size })
+    return cursorPage(result.events, {
+      nextCursor: result.nextCursor,
+      prevCursor: result.prevCursor,
+    })
+    // → { data, meta: { nextCursor, prevCursor, hasNext, hasPrev } }
+  }
+}
+```
+
+`parseCursorParams` returns `{ after?, before?, size, backward }`: `after` wins when both cursors
+are sent, `size` is `first` going forward and `last` going backward, clamped to `maxSize`.
+`hasNext` / `hasPrev` default to whether the matching cursor is set; pass them explicitly when the
+store knows better. Cursors are opaque strings your store produces — when they are keyset values,
+`encodeCursor` / `decodeCursor` give you a URL-safe codec.
+
+### The client side
+
+```ts title="inertia/pages/runs/index.tsx"
+import { filterQuery, type CursorPageResponse, type OffsetPage } from '@adonis-agora/filter-client'
+
+// Offset
+const runs: OffsetPage<Run> = await fetch(
+  `/runs?${filterQuery().where('status', 'failed').sortDesc('createdAt').page(2, 50).toQueryString()}`,
+).then((r) => r.json())
+
+// Cursor
+const query = filterQuery().where('type', 'deploy').first(100)
+const events: CursorPageResponse<Event> = await fetch(`/events?${query.toQueryString()}`).then((r) =>
+  r.json(),
+)
+if (events.meta.nextCursor) query.after(events.meta.nextCursor) // the next request
+```
+
+See the [client guide](/docs/filter/guides/client#cursor-pagination) for the full builder surface.
+
 ## Testing one
 
 The draft is yours, so the test needs no database and no mock builder — construct the draft,

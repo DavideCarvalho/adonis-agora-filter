@@ -89,6 +89,27 @@ export type {
   GroupByCountRow,
 } from './group_by_count.js';
 export { groupByCountFromRequest } from './group_by_count.js';
+export type {
+  CursorPageInit,
+  CursorPageMeta,
+  CursorPageResponse,
+  OffsetPage,
+  OffsetPageInit,
+  OffsetPageMeta,
+  PageParams,
+  PageSizeOptions,
+  ParsedCursorParams,
+  ResolvedSortItem,
+  ResolveSortOptions,
+} from './list_api.js';
+export {
+  cursorPage,
+  offsetPage,
+  parseCursorParams,
+  parsePageParams,
+  readCursorParams,
+  resolveSort,
+} from './list_api.js';
 export {
   applyColumnFilters,
   applyComputedField,
