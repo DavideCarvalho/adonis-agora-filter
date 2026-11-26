@@ -1,7 +1,7 @@
 import { BaseFilter } from './base_filter.js';
 import { BaseModelFilter } from './base_model_filter.js';
 import { readDecorators } from './decorator_metadata.js';
-import { defineFilter, type FilterSpec } from './filter_spec.js';
+import { defineFilter, type FilterSpec, withSpecOrigin } from './filter_spec.js';
 import type { FilterFieldTypeInfo } from './generate_client.js';
 
 /**
@@ -161,29 +161,31 @@ export function specFromFilterClass(cls: FilterClass): FilterSpec {
   if (cached) return cached;
 
   const declared = declaredByModel(cls);
-  const spec = defineFilter({
-    ...declared,
-    filterable: (statics(cls).filterable as never) ?? declared.filterable ?? [],
-    ...pick(cls, [
-      'model',
-      'sortable',
-      'searchable',
-      'relations',
-      'aliases',
-      'computed',
-      'fieldTypes',
-      'fullText',
-      'vectorSimilarity',
-      'tenant',
-      'defaultFilters',
-      'defaultSort',
-      'defaultSize',
-      'maxSize',
-      'maxDepth',
-      'table',
-      'throwOnInvalid',
-    ]),
-  });
+  const spec = withSpecOrigin(`filter class ${cls.name || '(anonymous)'}`, () =>
+    defineFilter({
+      ...declared,
+      filterable: (statics(cls).filterable as never) ?? declared.filterable ?? [],
+      ...pick(cls, [
+        'model',
+        'sortable',
+        'searchable',
+        'relations',
+        'aliases',
+        'computed',
+        'fieldTypes',
+        'fullText',
+        'vectorSimilarity',
+        'tenant',
+        'defaultFilters',
+        'defaultSort',
+        'defaultSize',
+        'maxSize',
+        'maxDepth',
+        'table',
+        'throwOnInvalid',
+      ]),
+    }),
+  );
   SPEC_CACHE.set(cls, spec);
   return spec;
 }

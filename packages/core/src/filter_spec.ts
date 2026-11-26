@@ -11,6 +11,7 @@ import type {
   SortItem,
   VectorSimilarityConfig,
 } from './types.js';
+import { InvalidColumnFilterError } from './validate-column-filter.js';
 
 /**
  * Thrown when a {@link defineFilter} declaration is itself invalid (a developer
@@ -72,7 +73,12 @@ function fieldTypesFromFilterable(
  * whitelists deeper paths (`relation.child.column`), bounded by `maxDepth`.
  */
 export interface RelationSpec {
-  /** Columns of the related model clients may filter on. Defaults to `'*'`. */
+  /**
+   * Columns of the related model clients may filter on. Defaults to `[]` (none): a
+   * relation's columns are deny-by-default, exactly like the base `filterable`, so
+   * declaring a relation never exposes its secrets (`author.password`). List the
+   * columns explicitly; `'*'` opts every column in (use with care).
+   */
   filterable?: RelationColumns;
   /** Columns of the related model clients may sort on. Defaults to `filterable`. */
   sortable?: RelationColumns;
@@ -262,10 +268,242 @@ function declaredDepth(relations: Record<string, RelationSpec> | undefined): num
   return max;
 }
 
-/** Does an allow-list admit a bare column name? `undefined` → treated as `'*'`. */
+/**
+ * Does an allow-list admit a bare column name? `undefined` → nothing (deny by
+ * default); only an explicit `'*'` admits every column.
+ */
 function columnAllowed(list: RelationColumns | undefined, column: string): boolean {
-  if (list === undefined || list === '*') return true;
+  if (list === undefined) return false;
+  if (list === '*') return true;
   return list.includes(column);
+}
+
+/** The effective column list of one relation for `kind` (`sortable` falls back to `filterable`). */
+function relationColumns(
+  rel: RelationSpec,
+  kind: 'filterable' | 'sortable',
+): RelationColumns | undefined {
+  return kind === 'filterable' ? rel.filterable : (rel.sortable ?? rel.filterable);
+}
+
+/** Emit a dev-time warning (never in production). Uses `process.emitWarning` so it is filterable. */
+function devWarn(message: string, code = 'AGORA_FILTER_RELATION_COLUMNS'): void {
+  const proc = (globalThis as { process?: NodeJS.Process }).process;
+  if (!proc || proc.env?.NODE_ENV === 'production') return;
+  proc.emitWarning(message, { code });
+}
+
+/** Spec → the `kind:path`s already warned about as going through an undeclared relation. */
+const warnedUndeclared = new WeakMap<FilterSpec, Set<string>>();
+let requestWarningsMuted = 0;
+
+/**
+ * Run `fn` without the per-request dev warnings — for dry runs (`filter:query:explain`, the dev
+ * tools) that report the same thing in their own output.
+ */
+export function withoutRequestWarnings<T>(fn: () => T): T {
+  requestWarningsMuted++;
+  try {
+    return fn();
+  } finally {
+    requestWarningsMuted--;
+  }
+}
+
+/** Once per spec and path: a request filtered or sorted through a relation the spec never declared. */
+function warnUndeclaredRelation(spec: FilterSpec, field: string, kind: 'filter' | 'sort'): void {
+  if (requestWarningsMuted > 0) return;
+  const reason = undeclaredRelationReason(spec, field);
+  if (!reason) return;
+  let seen = warnedUndeclared.get(spec);
+  if (!seen) {
+    seen = new Set();
+    warnedUndeclared.set(spec, seen);
+  }
+  const key = `${kind}:${field}`;
+  if (seen.has(key) || seen.size >= 200) return;
+  seen.add(key);
+  devWarn(
+    `[@adonis-agora/filter] ${kind} on "${field}" was dropped: ${reason}.`,
+    'AGORA_FILTER_UNDECLARED_RELATION',
+  );
+}
+
+/** A place in the app where a spec declared relations with no `filterable` (see `agora:doctor`). */
+export interface OpenRelationsEntry {
+  /** Where the spec was defined: `file:line` of the `defineFilter` call, or the filter class. */
+  origin: string;
+  /** Dotted paths of the relations declared without `filterable`/`sortable`/`aggregates`. */
+  relations: string[];
+}
+
+/**
+ * Every `defineFilter` call in this process that declared a relation with no columns, keyed by
+ * where it was called (so a spec built per request cannot grow it), plus how many specs were
+ * defined at all. Read by the `filter.relations` doctor check; nothing else depends on it.
+ */
+const OPEN_RELATIONS = new Map<string, OpenRelationsEntry>();
+const OPEN_RELATIONS_CAP = 500;
+let specsDefined = 0;
+let pendingOrigin: string | undefined;
+
+/** Snapshot of the relations-without-columns registry fed by {@link defineFilter}. */
+export function openRelationsRegistry(): { specs: number; entries: OpenRelationsEntry[] } {
+  return { specs: specsDefined, entries: [...OPEN_RELATIONS.values()] };
+}
+
+/** Run `fn` with `origin` as the label of any spec it defines (filter classes name themselves). */
+export function withSpecOrigin<T>(origin: string, fn: () => T): T {
+  const previous = pendingOrigin;
+  pendingOrigin = origin;
+  try {
+    return fn();
+  } finally {
+    pendingOrigin = previous;
+  }
+}
+
+/** This module's directory, as a path: stack frames under it are the lib, not the app. */
+const LIB_DIR = (() => {
+  try {
+    return decodeURIComponent(new URL('.', import.meta.url).pathname);
+  } catch {
+    return undefined;
+  }
+})();
+
+/** `file:line` of the first stack frame outside this lib (the app's `defineFilter` call). */
+function callerOrigin(): string {
+  for (const line of (new Error().stack ?? '').split('\n').slice(1)) {
+    const match = /((?:file:\/\/)?(?:\/[A-Za-z]:|[A-Za-z]:)?[/\\][^():\s]+):(\d+):\d+\)?\s*$/.exec(
+      line,
+    );
+    if (!match) continue;
+    const file = match[1]!.startsWith('file://')
+      ? decodeURIComponent(match[1]!.slice('file://'.length))
+      : match[1]!;
+    if (LIB_DIR && file.startsWith(LIB_DIR)) continue;
+    return `${file}:${match[2]}`;
+  }
+  return 'unknown location';
+}
+
+function registerOpenRelations(relations: string[]): void {
+  const origin = pendingOrigin ?? callerOrigin();
+  const existing = OPEN_RELATIONS.get(origin);
+  if (existing) {
+    existing.relations = [...new Set([...existing.relations, ...relations])];
+  } else if (OPEN_RELATIONS.size < OPEN_RELATIONS_CAP) {
+    OPEN_RELATIONS.set(origin, { origin, relations });
+  }
+}
+
+/**
+ * Resolve the relation whitelist with its defaults made explicit: `filterable`
+ * defaults to `[]` (deny), `sortable` to `filterable`. A relation declared with
+ * neither (and no `aggregates`) used to expose every related column — it now
+ * exposes none, so warn the developer at wiring time (and record it for
+ * `agora:doctor`) instead of letting the change surface only as request-time 400s.
+ */
+function resolveRelations(
+  relations: Record<string, RelationSpec>,
+  prefix: string[] = [],
+  open: string[] = [],
+): Record<string, RelationSpec> {
+  const out: Record<string, RelationSpec> = {};
+  for (const [name, rel] of Object.entries(relations)) {
+    const path = [...prefix, name];
+    if (rel.filterable === undefined && rel.sortable === undefined && !rel.aggregates) {
+      open.push(path.join('.'));
+      devWarn(
+        `defineFilter: relation "${path.join('.')}" declares no \`filterable\` columns, so none of ` +
+          'its columns can be filtered or sorted (relation columns are deny-by-default). List the ' +
+          `ones clients may use, e.g. \`${optionPath(path, 'filterable')}: ['name']\`, or set ` +
+          '`filterable: []` to keep it closed and silence this warning.',
+      );
+    }
+    const filterable = rel.filterable ?? [];
+    out[name] = Object.freeze({
+      ...rel,
+      filterable,
+      sortable: rel.sortable ?? filterable,
+      ...(rel.relations && { relations: resolveRelations(rel.relations, path, open) }),
+    });
+  }
+  return Object.freeze(out);
+}
+
+/** `['posts', 'comments']` → `relations.posts.relations.comments.filterable`. */
+function optionPath(relationPath: string[], kind: 'filterable' | 'sortable'): string {
+  return `${relationPath.map((r) => `relations.${r}`).join('.')}.${kind}`;
+}
+
+/**
+ * When `field` is a column on a **declared** relation that the relation's
+ * allow-list does not admit, return an actionable message naming the exact spec
+ * option to change; otherwise `undefined` (allowed, or not a relation-column
+ * miss — an undeclared relation or a path past `maxDepth` keeps the ordinary
+ * drop/`throwOnInvalid` behaviour).
+ *
+ * Relation columns were allowed by default before 1.0; failing loudly here keeps
+ * that change from silently turning a working filter into an ignored one.
+ */
+export function relationColumnDenial(
+  spec: Pick<FilterSpec, 'relations' | 'maxDepth'>,
+  field: string,
+  kind: 'filterable' | 'sortable',
+): string | undefined {
+  const segments = field.split('.');
+  if (segments.length < 2 || segments.length - 1 > spec.maxDepth) return undefined;
+  const leaf = segments[segments.length - 1]!;
+  if (leaf.length === 0 || BLOCKED_SEGMENTS.has(leaf)) return undefined;
+
+  let node: Readonly<Record<string, RelationSpec>> | undefined = spec.relations;
+  let rel: RelationSpec | undefined;
+  for (const seg of segments.slice(0, -1)) {
+    if (seg.length === 0 || BLOCKED_SEGMENTS.has(seg)) return undefined;
+    if (!node || !Object.hasOwn(node, seg)) return undefined;
+    rel = node[seg]!;
+    node = rel.relations;
+  }
+  if (!rel || columnAllowed(relationColumns(rel, kind), leaf)) return undefined;
+
+  const relationPath = segments.slice(0, -1);
+  return (
+    `Field "${field}" is not ${kind}: "${leaf}" is not in the allow-list of relation ` +
+    `"${relationPath.join('.')}". To allow it, add '${leaf}' to \`${optionPath(relationPath, kind)}\` ` +
+    'in the filter spec.'
+  );
+}
+
+/**
+ * Why a dotted `field` is dropped when it goes through a relation the spec does not declare
+ * (`medication.nome` on a spec without `relations.medication`), naming the option to add; otherwise
+ * `undefined` (a root column, or a path whose relations are all declared).
+ */
+export function undeclaredRelationReason(
+  spec: Pick<FilterSpec, 'relations' | 'maxDepth'>,
+  field: string,
+): string | undefined {
+  const segments = field.split('.');
+  // No `maxDepth` guard: a spec with no relations has `maxDepth` 0, and that is precisely the spec
+  // where `medication.nome` most needs explaining. A fully declared path past `maxDepth` stays silent.
+  if (segments.length < 2) return undefined;
+  let node: Readonly<Record<string, RelationSpec>> | undefined = spec.relations;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i]!;
+    if (seg.length === 0 || BLOCKED_SEGMENTS.has(seg)) return undefined;
+    if (!node || !Object.hasOwn(node, seg)) {
+      const path = segments.slice(0, i + 1);
+      const leaf = segments.slice(i + 1).join('.');
+      return (
+        `relation \`${path.join('.')}\` is not declared in this spec. To allow it, declare ` +
+        `\`${path.map((r) => `relations.${r}`).join('.')}\` with \`filterable: ['${leaf}']\``
+      );
+    }
+    node = node[seg]!.relations;
+  }
+  return undefined;
 }
 
 /**
@@ -305,8 +543,7 @@ function pathAllowed(
     if (i === segments.length - 2) {
       const leaf = segments[segments.length - 1]!;
       if (leaf.length === 0 || BLOCKED_SEGMENTS.has(leaf)) return false;
-      const list = kind === 'filterable' ? rel.filterable : (rel.sortable ?? rel.filterable);
-      return columnAllowed(list, leaf);
+      return columnAllowed(relationColumns(rel, kind), leaf);
     }
     node = rel.relations;
   }
@@ -335,7 +572,10 @@ export function defineFilter(options: DefineFilterOptions): FilterSpec {
     throw new FilterDefinitionError('`maxDepth` must be a non-negative integer.');
   }
 
-  const relations = options.relations ?? {};
+  const openRelations: string[] = [];
+  const relations = resolveRelations(options.relations ?? {}, [], openRelations);
+  specsDefined++;
+  if (openRelations.length > 0) registerOpenRelations(openRelations);
   // The colocated map form desugars here, at the boundary: the keys become the allow-list and the
   // values become `fieldTypes`. Everything downstream (the predicates, the runner, the codegen)
   // keeps seeing the array form it always saw, so this is purely an authoring convenience.
@@ -400,8 +640,27 @@ export function defineFilter(options: DefineFilterOptions): FilterSpec {
  */
 export function specToFilterConfig(spec: FilterSpec): FilterConfig {
   const defaultSortFields = new Set(spec.defaultSort.map((s) => s.field));
-  const allowed: AllowList = (field) => spec.isFilterable(field);
-  const sortable: AllowList = (field) => spec.isSortable(field) || defaultSortFields.has(field);
+  // A column on a declared relation that its allow-list does not admit is always a
+  // loud `InvalidColumnFilterError` (→ 400) naming the spec option to change — even
+  // without `throwOnInvalid` — so the deny-by-default relation columns never turn a
+  // working filter into a silently ignored one.
+  // A path through a relation the spec never declared keeps the ordinary behaviour (dropped like
+  // an unknown root column, or refused under `throwOnInvalid`), plus a one-time dev warning saying
+  // which relation to declare.
+  const allowed: AllowList = (field) => {
+    if (spec.isFilterable(field)) return true;
+    const denial = relationColumnDenial(spec, field, 'filterable');
+    if (denial) throw new InvalidColumnFilterError(denial);
+    warnUndeclaredRelation(spec, field, 'filter');
+    return false;
+  };
+  const sortable: AllowList = (field) => {
+    if (spec.isSortable(field) || defaultSortFields.has(field)) return true;
+    const denial = relationColumnDenial(spec, field, 'sortable');
+    if (denial) throw new InvalidColumnFilterError(denial);
+    warnUndeclaredRelation(spec, field, 'sort');
+    return false;
+  };
 
   return {
     allowed,

@@ -106,6 +106,12 @@ Relation sorting forwards through the sort stage, but ordering across a to-many
 relation may need joins/aggregation — prefer relation filters, and sort by
 aggregate aliases (`withCount`'s `posts_count`) where possible.
 
+A relation's columns are deny-by-default: `filterable` defaults to `[]` and
+`sortable` to `filterable`, so always list the columns
+(`relations: { author: { filterable: ['name'] } }`). A request on an unlisted
+column of a declared relation is a 400 naming the option to add
+(`relations.author.filterable`).
+
 Source: `docs/definitions/relations.mdx`, `docs/guides/relations.mdx`
 
 ### 2. Computed fields — virtual columns backed by your SQL
@@ -203,6 +209,28 @@ applyFilterFromRequest(query, userFilter, ctx, {
 Source: `docs/definitions/index.mdx` (Under the hood)
 
 ## Common mistakes
+
+### [CRITICAL] Declaring a relation without listing its columns
+
+Wrong:
+
+```typescript
+defineFilter({ filterable: ['title'], relations: { author: {} } })
+// 0.x: every author column, so ?filter[author.password][startsWith]=$2a$ leaked the hash
+// 1.0: no author column, and every author.* request is a 400
+```
+
+Correct:
+
+```typescript
+defineFilter({ filterable: ['title'], relations: { author: { filterable: ['name', 'email'] } } })
+```
+
+Relation columns are deny-by-default. Use `filterable: '*'` only when the
+related table holds nothing sensitive, and `filterable: []` for a relation that
+is only a hop to a deeper one (it also silences the dev-time warning).
+
+Source: `docs/definitions/relations.mdx`
 
 ### [HIGH] Declaring aggregate paths without the owning `model`
 

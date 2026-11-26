@@ -177,6 +177,14 @@ describe('filter commands', () => {
       expect(body.issues[0]).toMatchObject({ part: 'filter', subject: 'secret' });
     });
 
+    it('does not report plain success when a filter goes through an undeclared relation', async () => {
+      const cmd = await exec(FilterQueryExplain, ['people', 'filter[medication.nome][equals]=x']);
+      expect(cmd.exitCode).toBe(0);
+      expect(printed(cmd)).toContain('1 part(s) were dropped and do nothing');
+      expect(printed(cmd)).toContain('relation `medication` is not declared in this spec');
+      expect(printed(cmd)).not.toMatch(/Accepted by "people"\.$/m);
+    });
+
     it('lists dropped filters', async () => {
       const cmd = await exec(FilterQueryExplain, ['people', 'filter[secret][equals]=x']);
       expect(cmd.exitCode).toBe(0);
