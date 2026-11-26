@@ -33,7 +33,7 @@ export const userFilter = defineFilter({
 })
 ```
 
-A `RelationSpec`'s `filterable` defaults to `'*'` (any column of the related model) and its `sortable` defaults to its `filterable`.
+A `RelationSpec`'s `filterable` defaults to `[]`: a relation's columns are **deny-by-default**, like the base `filterable`, so declaring a relation never exposes columns such as `author.password`. List the columns clients may use; `'*'` opts every column in (use with care). Its `sortable` defaults to its `filterable`. Outside production, `defineFilter` warns about a relation declared with no `filterable`, `sortable` or `aggregates`; set `filterable: []` to keep it closed and silence the warning.
 
 ## Dotted paths become `whereHas`
 

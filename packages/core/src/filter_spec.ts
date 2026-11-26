@@ -72,7 +72,12 @@ function fieldTypesFromFilterable(
  * whitelists deeper paths (`relation.child.column`), bounded by `maxDepth`.
  */
 export interface RelationSpec {
-  /** Columns of the related model clients may filter on. Defaults to `'*'`. */
+  /**
+   * Columns of the related model clients may filter on. Defaults to `[]` (none): a
+   * relation's columns are deny-by-default, exactly like the base `filterable`, so
+   * declaring a relation never exposes its secrets (`author.password`). List the
+   * columns explicitly; `'*'` opts every column in (use with care).
+   */
   filterable?: RelationColumns;
   /** Columns of the related model clients may sort on. Defaults to `filterable`. */
   sortable?: RelationColumns;
@@ -262,10 +267,46 @@ function declaredDepth(relations: Record<string, RelationSpec> | undefined): num
   return max;
 }
 
-/** Does an allow-list admit a bare column name? `undefined` → treated as `'*'`. */
+/**
+ * Does an allow-list admit a bare column name? `undefined` → nothing (deny by
+ * default); only an explicit `'*'` admits every column.
+ */
 function columnAllowed(list: RelationColumns | undefined, column: string): boolean {
-  if (list === undefined || list === '*') return true;
+  if (list === undefined) return false;
+  if (list === '*') return true;
   return list.includes(column);
+}
+
+/** Emit a dev-time warning (never in production). Uses `process.emitWarning` so it is filterable. */
+function devWarn(message: string): void {
+  const proc = (globalThis as { process?: NodeJS.Process }).process;
+  if (!proc || proc.env?.NODE_ENV === 'production') return;
+  proc.emitWarning(message, { code: 'AGORA_FILTER_RELATION_COLUMNS' });
+}
+
+/** `['posts', 'comments']` → `relations.posts.relations.comments.filterable`. */
+function optionPath(relationPath: string[]): string {
+  return `${relationPath.map((r) => `relations.${r}`).join('.')}.filterable`;
+}
+
+/**
+ * Warn (outside production) about every relation declared with no `filterable`,
+ * `sortable` or `aggregates`: its columns used to be open by default and are now
+ * closed, so a filter on them is dropped (or refused under `throwOnInvalid`).
+ */
+function warnOpenRelations(relations: Record<string, RelationSpec>, prefix: string[] = []): void {
+  for (const [name, rel] of Object.entries(relations)) {
+    const path = [...prefix, name];
+    if (rel.filterable === undefined && rel.sortable === undefined && !rel.aggregates) {
+      devWarn(
+        `defineFilter: relation "${path.join('.')}" declares no \`filterable\` columns, so none of ` +
+          'its columns can be filtered or sorted (relation columns are deny-by-default). List the ' +
+          `ones clients may use, e.g. \`${optionPath(path)}: ['name']\`, or set ` +
+          '`filterable: []` to keep it closed and silence this warning.',
+      );
+    }
+    if (rel.relations) warnOpenRelations(rel.relations, path);
+  }
 }
 
 /**
@@ -336,6 +377,7 @@ export function defineFilter(options: DefineFilterOptions): FilterSpec {
   }
 
   const relations = options.relations ?? {};
+  warnOpenRelations(relations);
   // The colocated map form desugars here, at the boundary: the keys become the allow-list and the
   // values become `fieldTypes`. Everything downstream (the predicates, the runner, the codegen)
   // keeps seeing the array form it always saw, so this is purely an authoring convenience.
