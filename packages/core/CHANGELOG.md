@@ -1,5 +1,50 @@
 # @adonis-agora/filter
 
+## 1.0.0
+
+### Major Changes
+
+- [`fecc2fa`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/fecc2fa4c6ea9c514fe16b7bbb99ce665ca08a50) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - **Breaking (security): relation columns are deny-by-default.** A `RelationSpec` declared without `filterable` (`relations: { author: {} }`) used to make every column of the related model filterable and sortable, so `?filter[author.password][startsWith]=$2a$` could recover a secret one character at a time. A relation's `filterable` now defaults to `[]` (its `sortable` still defaults to `filterable`); list the columns clients may use, or set `filterable: '*'` to opt a harmless relation back in.
+  
+  - A request filtering or sorting on an unlisted column of a declared relation throws `InvalidColumnFilterError` even without `throwOnInvalid`, with a message naming the option to add, e.g. ``add 'name' to `relations.author.filterable` ``. Fields on undeclared relations are still dropped as before.
+  - Outside production, `defineFilter` emits a warning (code `AGORA_FILTER_RELATION_COLUMNS`) for each relation declared without `filterable`, `sortable` or `aggregates`; set `filterable: []` for a relation that is only a hop to a deeper one.
+  - New `agora:doctor` check `filter.relations` warns about the same relations, by file and line (or filter class). It needs no configuration: it loads `config/filter.ts`, the filter classes under `app/filters`, and any spec the app already defined.
+  - `agora:doctor` (`filter.manifest`) no longer reports a generated client as out of date when its code matches a fresh generation and only the banner's content hash is stale, as happens after a hand edit. The hash depends only on the generated output, never on the lib version.
+  - A filter or sort through a relation the spec doesn't declare (`filter[medication.nome]` without `relations.medication`) is still dropped, or refused under `throwOnInvalid`. It is no longer silent: outside production it warns once per spec and path (code `AGORA_FILTER_UNDECLARED_RELATION`). `filter:query:explain` reports the part as dropped because the relation is not declared, instead of printing a plain "Accepted by".
+  - `InvalidColumnFilterError` now has `status: 400` and `code: 'E_INVALID_COLUMN_FILTER'`, so AdonisJS renders it as a `400 Bad Request` without a custom handler.
+  
+  To upgrade, add `filterable: [...]` to every relation in your specs and filter classes; `node ace agora:doctor` and the startup warnings list the ones to fix. See "Migrating to 1.0".
+
+- [#139](https://github.com/DavideCarvalho/adonis-agora-filter/pull/139) [`0cdff5b`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/0cdff5b7c587a729c9b64602ff20d19279673c28) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - First stable release.
+  
+  **Breaking (`@adonis-agora/filter-client`): pages are 1-based.** `.page(n)` now numbers pages from `1`, the same as the server and Lucid's `paginate`. Before, `.page()` took a 0-based index, so `.page(0)` and `.page(1)` both returned the first page and every later page was off by one.
+  
+  - Replace `.page(0, 25)` with `.page(1, 25)`, and `.page(i)` with `.page(i + 1)`.
+  - `.page()` throws a `RangeError` when `page` or `size` is below 1 or not an integer.
+  - `applyTanstackTableState` / `tanstackTableToFilterQuery` send TanStack's 0-based `pageIndex` as `pageIndex + 1`. If you added the `+ 1` yourself before calling them, remove it.
+  - New `tanstackPaginationFromMeta(meta)` (from `@adonis-agora/filter-client/tanstack`) maps a paginated response's `meta` back to TanStack state (`pageIndex = currentPage - 1`, plus `pageCount` and `rowCount`).
+  
+  `@adonis-agora/filter` (the server) is unchanged: it was already 1-based.
+  
+  - Supported runtime: Node.js 24 and later (`engines.node: ">=24"`), the same requirement 0.x declared.
+  - `node ace add @adonis-agora/filter` runs the configure hook from the package's main entry. The `@adonis-agora/filter/configure` subpath still works too.
+
+### Minor Changes
+
+- [#146](https://github.com/DavideCarvalho/adonis-agora-filter/pull/146) [`efaae21`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/efaae2137a53a8c85a66a9640d5606256ac82852) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `node ace agora:doctor` (the shared Agora health check) and `node ace filter:doctor`, with the `filter.manifest` check: `config/filter.ts` loads, and the clients in `app/generated/filters` match it (out of date, missing or orphaned → run `make:filter-client`). New `@adonis-agora/filter/doctor` entry for `--no-boot`.
+
+- [#154](https://github.com/DavideCarvalho/adonis-agora-filter/pull/154) [`84b8c39`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/84b8c3989742363fff500e2fad8b4f58ebb574cd) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - New ace commands for what the dev MCP tools answer: `filter:specs:list` (`--page`, `--size`, `--json` as `{ data, meta }`), `filter:specs:show <name>` and `filter:query:explain <name> <query>` (exits with 1 when the request would be refused). They run the same code as the `filter_*` tools.
+
+- [#145](https://github.com/DavideCarvalho/adonis-agora-filter/pull/145) [`7548c56`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/7548c56e9ac622723ebcdca9a9253ef3068fdc2b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - Dev MCP tools on `@adonis-agora/agent`'s `/mcp/agora` endpoint (gated by its `devTools.authorize`): `filter_list_specs`, `filter_get_spec`, `filter_explain_query` (dry run of a query string against a spec, no database). New exports `explainFilterQuery`, `parseQueryString` and `loadFilterManifest`; `make:filter-client` now also reads a default `{ filters }` export or `filters` in the `filter` config.
+
+- [#152](https://github.com/DavideCarvalho/adonis-agora-filter/pull/152) [`8b3a205`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/8b3a205ff43b36917032c65d06face9cfb7d874a) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - List API helpers for any backend: `offsetPage(rows, { total, page, size })` and `cursorPage(rows, { nextCursor, prevCursor, hasNext, hasPrev })` / `cursorPage(buildCursorPage(...), map?)` build the `{ data, meta }` list envelopes; `parsePageParams(qs, { defaultSize, maxSize })` and `parseCursorParams(qs, { defaultSize, maxSize })` read paging params from a query string; `resolveSort(sort, { sortable, default })` checks a sort against an allow-list and throws `InvalidColumnFilterError` for anything else. Types `OffsetPage`, `OffsetPageMeta`, `CursorPageResponse`, `CursorPageMeta`, `PageParams`, `ParsedCursorParams` are exported. `readCursorParams(qs)` exposes the raw `after`/`before`/`first`/`last` read `applyCursorFromRequest` uses.
+
+### Patch Changes
+
+- [#149](https://github.com/DavideCarvalho/adonis-agora-filter/pull/149) [`90b00d6`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/90b00d6ef58de0b5665ebf26efdf9777fe93fc4b) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `agora:doctor` now checks the generated clients wherever they live. Set `codegen.output` in `config/filter.ts` (`export const codegen = { output: 'inertia/generated/filters' }`): `make:filter-client` writes there by default (`--output` still overrides) and the `filter.manifest` check compares the clients there. Without `codegen.output`, clients generated elsewhere are found by their banner, checked, and the doctor asks you to set it; with no generated clients anywhere the check reports a skip naming the directory it looked in instead of passing silently.
+
+- [#148](https://github.com/DavideCarvalho/adonis-agora-filter/pull/148) [`7ac919c`](https://github.com/DavideCarvalho/adonis-agora-filter/commit/7ac919ceabf41976ae30e42a50c5a6f179502593) Thanks [@DavideCarvalho](https://github.com/DavideCarvalho)! - `agora:doctor`'s `filter.manifest` check no longer reports prettier-formatted clients as out of date. Generated clients now carry a `// Content hash: sha256:…` banner line (the hash of what the generator emitted), and the check compares that hash with a fresh generation, so any formatter is fine. Clients generated before this get a more tolerant shape comparison (quoted vs unquoted keys, quote escapes and a union's leading `|` are ignored). Run `node ace make:filter-client` once to add the hash.
+
 ## 1.0.0-rc.7
 
 ### Major Changes
