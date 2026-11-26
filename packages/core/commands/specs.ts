@@ -175,8 +175,18 @@ export class FilterQueryExplain extends FilterCommand {
     if (out.rejected) this.exitCode = 1;
     if (this.json) return this.printJson(out);
 
+    const dropped = out.issues.filter((issue) => issue.effect === 'dropped');
     if (out.rejected) this.logger.error(`Refused: ${out.rejection}`);
-    else this.logger.success(`Accepted by "${out.spec}".`);
+    else if (dropped.length > 0) {
+      // Not "Accepted": the request succeeds, but without these parts — which is exactly what a
+      // developer debugging "my filter does nothing" needs to read first.
+      this.logger.warning(
+        `Accepted by "${out.spec}", but ${dropped.length} part(s) were dropped and do nothing:`,
+      );
+      for (const issue of dropped) {
+        this.logger.log(`  ${issue.part} ${issue.subject}: ${issue.message}`);
+      }
+    } else this.logger.success(`Accepted by "${out.spec}".`);
 
     const parsed = this.ui.table();
     parsed.head(['Part', 'Value']);

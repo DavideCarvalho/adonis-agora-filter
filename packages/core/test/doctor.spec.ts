@@ -16,6 +16,7 @@ import { agoraDoctorChecks } from '../src/doctor/index.js';
 import { defineFilter } from '../src/filter_spec.js';
 import {
   CONTENT_HASH_PREFIX,
+  filterClientContentHash,
   generateFilterClient,
   generateFilterClients,
   readFilterClientContentHash,
@@ -73,8 +74,8 @@ function clientFiles(only?: string[], dir = DEFAULT_CLIENT_OUTPUT) {
 
 describe('filter doctor checks', () => {
   it('has the frozen id and is exported for --no-boot', () => {
-    expect(filterDoctorChecks().map((c) => c.id)).toEqual(['filter.manifest']);
-    expect(agoraDoctorChecks).toHaveLength(1);
+    expect(filterDoctorChecks().map((c) => c.id)).toEqual(['filter.manifest', 'filter.relations']);
+    expect(agoraDoctorChecks).toHaveLength(2);
   });
 
   it('skips without a manifest, errors on a broken one, warns on an empty one', async () => {
@@ -272,7 +273,7 @@ export function peopleFilterQuery() {
     ).toBe(false);
   });
 
-  it('a client reformatted with its hash is ok in the doctor; a wrong hash is out of date', async () => {
+  it('a client reformatted with its hash is ok in the doctor; a stale hash on current code is ok too', async () => {
     const files = clientFiles();
     for (const key of Object.keys(files)) {
       files[key] = (files[key] as string)
@@ -284,13 +285,47 @@ export function peopleFilterQuery() {
       status: 'ok',
     });
 
+    // (That blanket quote swap also rewrote the comments, which no formatter does, so the hash
+    // carried it. The stale-hash cases below start from the files as generated.)
+    Object.assign(files, clientFiles());
     const peopleFile = Object.keys(files).find((f) => f.includes('people')) as string;
     files[peopleFile] = (files[peopleFile] as string).replace(
       /sha256:[0-9a-f]+/,
       'sha256:0000000000000000',
     );
+    // The code is what a fresh generation emits: a stale banner hash alone is not drift.
+    expect((await run(fakeApp({ filters: manifest, files }).app))[1]).toMatchObject({
+      status: 'ok',
+    });
+
+    // Code that differs from a fresh generation is out of date, hash or no hash.
+    files[peopleFile] = (files[peopleFile] as string).replace(/"age"/g, '"agee"');
     const out = await run(fakeApp({ filters: manifest, files }).app);
     expect(out[1]?.message).toContain('out of date: people_filter_client.ts');
+  });
+
+  it('a client edited by hand to match the new spec is current, despite its stale hash', () => {
+    // What happened in a real app: a field was added to the filter and, by hand, to the generated
+    // client, without re-running the generator. The banner kept the old hash. Regenerating only
+    // changed that line, so reporting the client as out of date was noise.
+    const before = generateFilterClient(typedSpec, { name: 'people' });
+    const after = generateFilterClient(
+      defineFilter({ ...typedSpec, filterable: [...typedSpec.filterable, 'email'] } as never),
+      { name: 'people' },
+    );
+    const oldHash = readFilterClientContentHash(before) as string;
+    const handEdited = after.replace(readFilterClientContentHash(after) as string, oldHash);
+    expect(readFilterClientContentHash(handEdited)).not.toBe(readFilterClientContentHash(after));
+    expect(clientMatches(handEdited, after)).toBe(true);
+    // ...and the stale client from before the edit is still out of date.
+    expect(clientMatches(before, after)).toBe(false);
+  });
+
+  it('the content hash does not depend on the lib version', () => {
+    // sha256 of the emitted body only: upgrading the lib changes it only if the output changes.
+    const fresh = generateFilterClient(typedSpec, { name: 'people' });
+    const body = fresh.split('\n').slice(4).join('\n');
+    expect(readFilterClientContentHash(fresh)).toBe(filterClientContentHash(body));
   });
 
   it('codeShape ignores formatting only', () => {
@@ -322,6 +357,6 @@ export function peopleFilterQuery() {
     };
     await new FilterProvider(app as never).boot();
     const registry = values.get('agora.doctor') as { checks: AgoraDoctorCheck[] };
-    expect(registry.checks.map((c) => c.id)).toEqual(['filter.manifest']);
+    expect(registry.checks.map((c) => c.id)).toEqual(['filter.manifest', 'filter.relations']);
   });
 });

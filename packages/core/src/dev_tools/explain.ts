@@ -1,5 +1,9 @@
 import type { FilterSpec } from '../filter_spec.js';
-import { specToFilterConfig } from '../filter_spec.js';
+import {
+  specToFilterConfig,
+  undeclaredRelationReason,
+  withoutRequestWarnings,
+} from '../filter_spec.js';
 import { filterableFieldPaths, sortableFieldPaths } from '../generate_client.js';
 import type { QueryBuilderLike } from '../lucid_adapter.js';
 import { FILTER_OPERATORS, OPERATOR_ALIASES } from '../operators.js';
@@ -96,6 +100,11 @@ function attempt(input: FilterInput, config: FilterConfig): string | null {
  * the builder calls it would make.
  */
 export function explainFilterQuery(spec: FilterSpec, query: string): FilterQueryExplanation {
+  // The dry run reports what it finds below; the per-request dev warnings would only repeat it.
+  return withoutRequestWarnings(() => explain(spec, query));
+}
+
+function explain(spec: FilterSpec, query: string): FilterQueryExplanation {
   const decoded = parseQueryString(query);
   const parsed = parseFilterRequest(decoded);
   const config = specToFilterConfig(spec);
@@ -107,13 +116,24 @@ export function explainFilterQuery(spec: FilterSpec, query: string): FilterQuery
 
   const issues: ExplainIssue[] = [];
   const check = (part: ExplainIssue['part'], subject: string, single: FilterInput) => {
+    const reason =
+      part === 'filter' || part === 'sort' ? undeclaredRelationReason(spec, subject) : undefined;
     const asConfigured = attempt(single, config);
     if (asConfigured !== null) {
-      issues.push({ part, subject, message: asConfigured, effect: 'rejected' });
+      const message = reason ? `${asConfigured} (${reason})` : asConfigured;
+      issues.push({ part, subject, message, effect: 'rejected' });
       return;
     }
     const asStrict = attempt(single, strict);
-    if (asStrict !== null) issues.push({ part, subject, message: asStrict, effect: 'dropped' });
+    if (asStrict === null) return;
+    // "is not filterable" says nothing about *why* when the path goes through a relation the spec
+    // never declared; say which relation, and what to declare.
+    issues.push({
+      part,
+      subject,
+      message: reason ? `dropped: ${reason}` : asStrict,
+      effect: 'dropped',
+    });
   };
   for (const filter of parsed.filters ?? []) {
     const subject = filter.field || (filter.AND ? 'AND group' : filter.OR ? 'OR group' : '?');

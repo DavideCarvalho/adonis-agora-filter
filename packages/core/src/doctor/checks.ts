@@ -1,7 +1,10 @@
 import type { Dirent } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { isAbsolute, join, relative, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { ApplicationService } from '@adonisjs/core/types';
+import { isFilterClass, specFromFilterClass } from '../filter_class.js';
+import { openRelationsRegistry } from '../filter_spec.js';
 import {
   CONTENT_HASH_PREFIX,
   FILTER_CLIENT_BANNER,
@@ -79,8 +82,7 @@ export async function findClientDirs(root: string, exclude: string): Promise<str
  * The code with formatting erased outside string literals (whitespace, semicolons, commas, quote
  * style and escapes, quotes around identifier-like object keys, a union's leading `|`), so a
  * client the app ran its formatter over still compares equal to a fresh generation, while any
- * change inside a string literal still counts. Only the fallback for clients generated before the
- * banner carried a content hash (see {@link clientMatches}).
+ * change inside a string literal still counts. See {@link clientMatches}.
  */
 export function codeShape(code: string): string {
   let out = '';
@@ -148,21 +150,27 @@ export function codeShape(code: string): string {
 }
 
 /**
- * Whether a generated client on disk still matches a fresh generation. Clients carry the hash of
- * what the generator emitted in their banner (a line comment no formatter touches), so the hashes
- * are compared and any reformatting of the code is irrelevant. A client without the hash (written
- * before it existed, or with `banner: false`) falls back to comparing {@link codeShape}s.
+ * Whether a generated client on disk still matches a fresh generation.
+ *
+ * The code itself is the authority: its {@link codeShape} (formatting erased) is compared with a
+ * fresh generation's, so a client the app's formatter rewrote still matches. The banner's content
+ * hash (sha256 of what the generator emitted, independent of the lib version) only adds matches:
+ * when the shapes differ but the hashes are equal, the generator's output is unchanged and the
+ * difference is formatting `codeShape` does not erase.
+ *
+ * It is never a reason to report a client whose code is current. A client edited by hand (a field
+ * added without re-running the generator) keeps the old hash in its banner; once the spec catches
+ * up, the code matches and the client is current, whatever the stale hash says.
  */
 export function clientMatches(onDisk: string, fresh: string): boolean {
-  const hash = readFilterClientContentHash(onDisk);
-  const expected = readFilterClientContentHash(fresh);
-  if (hash !== null && expected !== null) return hash === expected;
   const withoutHash = (code: string): string =>
     code
       .split('\n')
       .filter((line) => !line.trimStart().startsWith(CONTENT_HASH_PREFIX))
       .join('\n');
-  return codeShape(withoutHash(onDisk)) === codeShape(withoutHash(fresh));
+  if (codeShape(withoutHash(onDisk)) === codeShape(withoutHash(fresh))) return true;
+  const hash = readFilterClientContentHash(onDisk);
+  return hash !== null && hash === readFilterClientContentHash(fresh);
 }
 
 async function readOrNull(path: string): Promise<string | null> {
@@ -225,6 +233,103 @@ async function compareClients(
     fix: `Run \`${command}\`${orphaned.length > 0 ? ' and delete the files no longer in the manifest' : ''}`,
     docs: `${DOCS}/codegen`,
   };
+}
+
+/** Where `make:filter` writes filter classes; the doctor loads them to inspect their relations. */
+const FILTERS_DIR = 'app/filters';
+const FILTER_MODULE = /\.(?:ts|js|mjs)$/;
+
+/**
+ * Import every module under `app/filters` (where `make:filter` writes) and compile the filter
+ * classes they export, so each spec's `defineFilter` call runs and reaches the open-relations
+ * registry. Bounded and best effort: a module that cannot load (e.g. under `--no-boot`) is
+ * reported, never thrown.
+ */
+async function loadFilterModules(root: string): Promise<string[]> {
+  const failures: string[] = [];
+  let budget = SEARCH_DIR_BUDGET;
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (budget-- <= 0) return;
+    let entries: Dirent[];
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (depth < SEARCH_DEPTH && !entry.name.startsWith('.')) await walk(path, depth + 1);
+        continue;
+      }
+      if (!entry.isFile() || !FILTER_MODULE.test(entry.name) || entry.name.endsWith('.d.ts')) {
+        continue;
+      }
+      try {
+        const mod = (await import(pathToFileURL(path).href)) as Record<string, unknown>;
+        for (const value of Object.values(mod)) {
+          if (isFilterClass(value)) specFromFilterClass(value);
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
+        failures.push(`${relative(root, path).split(sep).join('/')} (${reason})`);
+      }
+    }
+  };
+  await walk(join(root, FILTERS_DIR), 0);
+  return failures;
+}
+
+/** `posts.comments` → `relations.posts.relations.comments.filterable`. */
+function filterableOption(relationPath: string): string {
+  return `${relationPath
+    .split('.')
+    .map((name) => `relations.${name}`)
+    .join('.')}.filterable`;
+}
+
+/**
+ * `filter.relations`: every relation a spec declares lists the columns clients may use. A relation
+ * without `filterable` is closed (deny-by-default), so a request on it is a 400 — usually not what
+ * the author meant, and the 0.x meaning ("every column") was a data leak.
+ */
+export async function checkRelations(app: ApplicationService): Promise<AgoraDoctorResult[]> {
+  // Run the app's defineFilter calls: the config/filter.ts manifest and the classes in app/filters.
+  await loadFilterManifest(app);
+  const root = app.makePath();
+  const failures = await loadFilterModules(root);
+
+  const { specs, entries } = openRelationsRegistry();
+  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  const label = (origin: string): string =>
+    origin.startsWith(prefix) ? origin.slice(prefix.length).split(sep).join('/') : origin;
+
+  const results: AgoraDoctorResult[] = entries.map(({ origin, relations }) => ({
+    status: 'warn',
+    message: `${label(origin)}: ${relations.length === 1 ? 'relation' : 'relations'} ${relations.join(', ')} ${relations.length === 1 ? 'declares' : 'declare'} no \`filterable\` columns, so every filter or sort on ${relations.length === 1 ? 'it' : 'them'} is refused with a 400`,
+    fix: `List the columns clients may use, e.g. \`${filterableOption(relations[0]!)}: ['name']\`, or set \`filterable: []\` to keep the relation closed on purpose`,
+    docs: `${DOCS}/definitions/relations`,
+  }));
+  if (results.length === 0) {
+    results.push(
+      specs === 0
+        ? {
+            status: 'skip',
+            message: `no defineFilter specs or filter classes found (config/filter.ts, ${FILTERS_DIR})`,
+          }
+        : {
+            status: 'ok',
+            message: `${specs} spec(s) checked: every declared relation lists its filterable columns`,
+          },
+    );
+  }
+  if (failures.length > 0) {
+    results.push({
+      status: 'skip',
+      message: `could not load ${failures.length} file(s) in ${FILTERS_DIR} to check their relations: ${failures.join('; ')}`,
+    });
+  }
+  return results;
 }
 
 /** The doctor checks of `@adonis-agora/filter` (ids frozen for 1.x). */
@@ -312,6 +417,12 @@ export function filterDoctorChecks(): AgoraDoctorCheck[] {
         });
         return results;
       },
+    },
+    {
+      id: 'filter.relations',
+      lib: 'filter',
+      title: 'Relation columns are listed',
+      run: checkRelations,
     },
   ];
 }

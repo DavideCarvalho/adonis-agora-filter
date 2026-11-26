@@ -42,6 +42,21 @@ function isAllowed(field: string, allow: AllowList): boolean {
   return allow.includes(field);
 }
 
+/**
+ * {@link isAllowed}, treating a predicate that throws `InvalidColumnFilterError`
+ * (a spec's actionable relation-column refusal, which points at `filterable`) as a
+ * plain "no". Distinct can never project a relation path, so that advice would send
+ * the reader to edit the wrong thing; distinct keeps its own messages.
+ */
+function isAllowedQuietly(field: string, allow: AllowList): boolean {
+  try {
+    return isAllowed(field, allow);
+  } catch (error) {
+    if (error instanceof InvalidColumnFilterError) return false;
+    throw error;
+  }
+}
+
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
@@ -285,7 +300,7 @@ export function resolveSafeDistinct(fields: string[], config: FilterConfig): str
 
   const safe: string[] = [];
   for (const field of aliased) {
-    if (!isAllowed(field, config.allowed)) {
+    if (!isAllowedQuietly(field, config.allowed)) {
       if (throwOnInvalid) {
         throw new InvalidColumnFilterError(`Field "${field}" is not a distinct-able column.`);
       }

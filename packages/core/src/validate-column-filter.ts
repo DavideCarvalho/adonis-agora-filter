@@ -45,7 +45,15 @@ const ARRAY_OPERATORS = new Set<FilterOperator>([
  */
 export const MAX_FILTER_DEPTH = 10;
 
+/**
+ * A bad client request (disallowed field, malformed filter, uncoercible value).
+ * Carries `status = 400` and a stable `code`, so AdonisJS's exception handler
+ * renders it as a `400 Bad Request` with no extra mapping.
+ */
 export class InvalidColumnFilterError extends Error {
+  readonly status = 400;
+  readonly code = 'E_INVALID_COLUMN_FILTER';
+
   constructor(message: string) {
     super(message);
     this.name = 'InvalidColumnFilterError';

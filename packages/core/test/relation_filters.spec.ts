@@ -98,17 +98,18 @@ describe('@adonis-agora/filter/testing — relation filtering end-to-end', () =>
     expect(qb.flatten()).toContainEqual({ method: 'where', args: ['title', 'Hi'] });
   });
 
-  it('drops a relation column that is not whitelisted (no whereHas emitted)', () => {
+  it('rejects a relation column that is not whitelisted (no whereHas emitted)', () => {
     const spec = defineFilter({
       filterable: ['name'],
       relations: { posts: { filterable: ['title'] } },
     });
     const qb = makeMockQueryBuilder();
 
-    applyFilterFromRequest(qb, spec, undefined, {
-      input: { filters: [{ field: 'posts.secret', operator: 'equals', value: 'x' }] },
-    });
-
+    expect(() =>
+      applyFilterFromRequest(qb, spec, undefined, {
+        input: { filters: [{ field: 'posts.secret', operator: 'equals', value: 'x' }] },
+      }),
+    ).toThrow(/relations\.posts\.filterable/);
     expect(qb.find('whereHas')).toBeUndefined();
   });
 });

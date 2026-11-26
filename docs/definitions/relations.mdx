@@ -33,7 +33,35 @@ export const userFilter = defineFilter({
 })
 ```
 
-A `RelationSpec`'s `filterable` defaults to `'*'` (any column of the related model) and its `sortable` defaults to its `filterable`.
+A `RelationSpec`'s `filterable` defaults to `[]`: **declaring a relation exposes none of its columns** until you list them. Its `sortable` defaults to its `filterable`.
+
+<Callout type="warn" title="Relation columns are deny-by-default">
+A related model usually carries columns no client should touch (`users.password`, `users.remember_token`). If `relations: { author: {} }` admitted every column, `?filter[author.password][startsWith]=$2a$` would let a client recover a hash one character at a time from which rows come back. So list exactly what clients may use:
+
+```ts
+relations: {
+  author: { filterable: ['name', 'email'] },
+}
+```
+
+`filterable: '*'` still opts every column of the relation in, when the related table holds nothing sensitive.
+</Callout>
+
+A request on a column of a declared relation that is not listed fails with an `InvalidColumnFilterError` (`status: 400`, so AdonisJS answers `400 Bad Request` without extra mapping) that names the option to change, even without `throwOnInvalid`:
+
+```
+Field "author.password" is not filterable: "password" is not in the allow-list of relation "author".
+To allow it, add 'password' to `relations.author.filterable` in the filter spec.
+```
+
+A sort names `relations.author.sortable`, and a nested relation names its full path (`relations.posts.relations.comments.filterable`). Fields on relations you never declared are still dropped (or rejected under `throwOnInvalid`), like any other disallowed field.
+
+In development, `defineFilter` also warns (`process.emitWarning`, code `AGORA_FILTER_RELATION_COLUMNS`) about each relation declared without `filterable`, `sortable` or `aggregates`. A relation that is only a hop to a deeper one, or one you want closed, sets `filterable: []` to say so. The [`filter.relations` doctor check](/docs/filter/doctor) reports the same relations from `node ace agora:doctor`, so CI catches them too.
+
+A request that filters or sorts through a relation the spec doesn't declare, such as
+`filter[medication.nome]` with no `relations.medication`, is dropped like an unknown column, or
+refused under `throwOnInvalid`. In development it also warns once per spec and path
+(code `AGORA_FILTER_UNDECLARED_RELATION`), naming the relation to declare.
 
 ## Dotted paths become `whereHas`
 

@@ -34,6 +34,11 @@ node ace filter:query:explain users '?filter[email][eq]=x' --json
 
 Quote the query string: shells read `&` and `[]` themselves. The leading `?` is optional.
 
+When the request is accepted but some parts are dropped, the command says so first and gives the
+reason for each part. A path through a relation the spec doesn't declare, such as
+`filter[medication.nome]` with no `relations.medication`, is reported as `dropped: relation
+\`medication\` is not declared in this spec`, along with the option to declare.
+
 The command never touches the database. The tenant scope is applied from the request at run time,
 so the output names the tenant column but not its value.
 

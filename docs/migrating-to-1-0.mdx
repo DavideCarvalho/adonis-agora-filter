@@ -1,10 +1,10 @@
 ---
 title: Migrating to 1.0
-description: Move an app from @adonis-agora/filter 0.x to 1.0. The client builder's pages are now 1-based; 1.0 requires Node.js 24 or later.
+description: Move an app from @adonis-agora/filter 0.x to 1.0. Relation columns are now deny-by-default, the client builder's pages are 1-based, and 1.0 requires Node.js 24 or later.
 icon: ArrowUpCircle
 ---
 
-`@adonis-agora/filter` 1.0 keeps the 0.11 server API as it is: every import, filter class, spec option, subpath and query-string spelling works the same. `@adonis-agora/filter-client` 1.0 has one breaking change: `.page()` is now 1-based, like the server.
+`@adonis-agora/filter` 1.0 keeps the 0.11 server API: every import, filter class, spec option, subpath and query-string spelling works the same, with one security change: [a relation's columns are deny-by-default](#server-relation-columns-are-deny-by-default). `@adonis-agora/filter-client` 1.0 has one breaking change: `.page()` is now 1-based, like the server.
 
 ---
 
@@ -101,9 +101,35 @@ const { data, meta } = await fetch(`/users?${qs}`).then((response) => response.j
 const { pagination, pageCount, rowCount } = tanstackPaginationFromMeta(meta)
 ```
 
-### Server: no changes
+### Server: relation columns are deny-by-default
 
-Controllers, filter classes and specs work on 1.0 exactly as they did on 0.11:
+In 0.x a relation declared without `filterable` (`relations: { author: {} }`) let clients filter and sort on **every** column of the related model, including secrets such as `author.password`. In 1.0 a relation's `filterable` defaults to `[]`: list the columns clients may use.
+
+Before:
+
+```ts title="app/filters/post_filter.ts"
+export const postFilter = defineFilter({
+  filterable: ['title'],
+  relations: { author: {} }, // every author column, password included
+})
+```
+
+After:
+
+```ts title="app/filters/post_filter.ts"
+export const postFilter = defineFilter({
+  filterable: ['title'],
+  relations: { author: { filterable: ['name', 'email'] } },
+})
+```
+
+You don't have to hunt for these. `node ace agora:doctor` lists each one by file and line (check `filter.relations`), `defineFilter` warns at startup (outside production) for each relation declared without `filterable`, and a request on an unlisted relation column fails with a `400` whose message names the option to add, e.g. ``add 'name' to `relations.author.filterable` ``. Use `filterable: '*'` only to restore the old behaviour for a relation whose table holds nothing sensitive.
+
+`InvalidColumnFilterError` now carries `status: 400` and `code: 'E_INVALID_COLUMN_FILTER'`, so the AdonisJS exception handler renders it as a `400` on its own.
+
+### Server: everything else is unchanged
+
+Apart from relation columns, controllers, filter classes and specs work on 1.0 exactly as they did on 0.11:
 
 ```ts title="app/controllers/users_controller.ts"
 import type { HttpContext } from '@adonisjs/core/http'
