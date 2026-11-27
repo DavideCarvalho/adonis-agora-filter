@@ -122,10 +122,18 @@ async function pageThenCount(q: LucidModelQuery, page: number, perPage: number):
 
   const { ModelPaginator } = await import('@adonisjs/lucid/orm');
   const { SimplePaginator } = await import('@adonisjs/lucid/database');
-  const paginator = q.wrapResultsToModelInstances
-    ? new ModelPaginator(total as number, perPage, page, ...(results as never[]))
-    : new SimplePaginator(total as number, perPage, page, ...results);
-  paginator.namingStrategy = q.model.namingStrategy as never;
+  const Paginator = (q.wrapResultsToModelInstances
+    ? ModelPaginator
+    : SimplePaginator) as unknown as new (
+    ...args: unknown[]
+  ) => { namingStrategy: unknown };
+  // Lucid 22.5 put a `pageName` argument before the rows; 22.0-22.4 take the rows right after
+  // `currentPage`. The peer range spans both, so read the shape off the constructor's arity (the
+  // parameters before the rest one) rather than the installed version.
+  const head: unknown[] =
+    SimplePaginator.length >= 4 ? [total, perPage, page, 'page'] : [total, perPage, page];
+  const paginator = new Paginator(...head, ...results);
+  paginator.namingStrategy = q.model.namingStrategy;
 
   if (isFetchCall) {
     await q.model.$hooks.runner('after:paginate').run(paginator);

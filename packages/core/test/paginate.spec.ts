@@ -1,3 +1,4 @@
+import { SimplePaginator } from '@adonisjs/lucid/database';
 import { ModelPaginator, SnakeCaseNamingStrategy } from '@adonisjs/lucid/orm';
 import { describe, expect, it } from 'vitest';
 import { paginate } from '../src/paginate.js';
@@ -76,7 +77,13 @@ class FakeModelQuery {
 
 /** Lucid's own paginator for the same numbers, to compare meta against. */
 function expected(total: number, perPage: number, page: number) {
-  const paginator = new ModelPaginator(total, perPage, page);
+  // What Lucid's own `paginate()` builds: 22.5+ takes a `pageName` ahead of the rows (read off
+  // SimplePaginator: ModelPaginator inherits its constructor, so its own arity is 0).
+  const Paginator = ModelPaginator as unknown as new (...args: unknown[]) => ModelPaginator;
+  const paginator =
+    SimplePaginator.length >= 4
+      ? new Paginator(total, perPage, page, 'page')
+      : new Paginator(total, perPage, page);
   paginator.namingStrategy = new SnakeCaseNamingStrategy();
   return paginator.getMeta();
 }
