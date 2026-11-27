@@ -36,6 +36,39 @@ object also drives client codegen (`generateFilterClient`).
 
 ## Setup
 
+The tenant `resolve` below reads `ctx.auth`, which only exists with `@adonisjs/auth` installed:
+`node ace add @adonisjs/auth` writes `config/auth.ts`, whose `Authenticators` declaration types
+`ctx.auth.user` as your `User` model, and registers the middleware that sets `ctx.auth` on every
+request:
+
+```ts title="config/auth.ts"
+import { defineConfig } from '@adonisjs/auth'
+import { sessionGuard, sessionUserProvider } from '@adonisjs/auth/session'
+import type { InferAuthenticators } from '@adonisjs/auth/types'
+
+const authConfig = defineConfig({
+  default: 'web',
+  guards: {
+    web: sessionGuard({
+      useRememberMeTokens: false,
+      provider: sessionUserProvider({ model: () => import('#models/user') }),
+    }),
+  },
+})
+
+export default authConfig
+
+declare module '@adonisjs/auth/types' {
+  export interface Authenticators extends InferAuthenticators<typeof authConfig> {}
+}
+```
+
+```ts title="start/kernel.ts (excerpt)"
+import router from '@adonisjs/core/services/router'
+
+router.use([() => import('@adonisjs/auth/initialize_auth_middleware')])
+```
+
 ```typescript
 // app/filters/user_filter.ts
 import type { HttpContext } from '@adonisjs/core/http'
@@ -57,7 +90,10 @@ export const userFilter = defineFilter({
 
   tenant: {
     column: 'tenantId',
-    resolve: (ctx) => (ctx as HttpContext).auth.user!.tenantId,
+    resolve: (ctx) => {
+      const user: User = (ctx as HttpContext).auth.getUserOrFail()
+      return user.tenantId
+    },
   },
 
   defaultFilters: [{ field: 'deletedAt', operator: 'isNull' }],
@@ -70,6 +106,8 @@ export const userFilter = defineFilter({
 Apply it in the controller:
 
 ```typescript
+// app/controllers/users_controller.ts
+import type { HttpContext } from '@adonisjs/core/http'
 import { applyFilterFromRequest } from '@adonis-agora/filter'
 import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
@@ -122,6 +160,9 @@ sortable like any column, and its *declaration* is its allow-list — never add
 it to `filterable`:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+import User from '#models/user'
+
 export const userFilter = defineFilter({
   filterable: ['status'],
   model: User, // supplies table: 'users' — required for the function form
@@ -146,6 +187,9 @@ relations; column functions additionally require those child columns listed
 under `aggregates` (you assert numericness — Lucid does not reflect SQL types):
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+import User from '#models/user'
+
 export const userFilter = defineFilter({
   filterable: ['status'],
   model: User,
@@ -172,6 +216,8 @@ Aliases remap a public name onto a whitelisted target (base column or relation
 path); resolution runs before allow-listing, exactly one hop:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 export const userFilter = defineFilter({
   filterable: ['status', 'name'],
   relations: { posts: { filterable: ['title'] } },
@@ -199,8 +245,14 @@ pass pre-parsed input via `options.input` for jobs/tests;
 for custom pipelines:
 
 ```typescript
+import type { HttpContext } from '@adonisjs/core/http'
 import { applyFilterFromRequest } from '@adonis-agora/filter'
+import { userFilter } from '#filters/user_filter'
+import User from '#models/user'
 
+declare const ctx: HttpContext // the request (or job) context the tenant resolver reads
+
+const query = User.query()
 applyFilterFromRequest(query, userFilter, ctx, {
   input: { filters: [{ field: 'status', operator: 'equals', value: 'active' }] },
 })
@@ -215,6 +267,8 @@ Source: `docs/definitions/index.mdx` (Under the hood)
 Wrong:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 defineFilter({ filterable: ['title'], relations: { author: {} } })
 // 0.x: every author column, so ?filter[author.password][startsWith]=$2a$ leaked the hash
 // 1.0: no author column, and every author.* request is a 400
@@ -223,6 +277,8 @@ defineFilter({ filterable: ['title'], relations: { author: {} } })
 Correct:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 defineFilter({ filterable: ['title'], relations: { author: { filterable: ['name', 'email'] } } })
 ```
 
@@ -237,6 +293,8 @@ Source: `docs/definitions/relations.mdx`
 Wrong:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 defineFilter({
   filterable: ['status'],
   relations: { posts: { filterable: ['title'], aggregates: ['views'] } },
@@ -246,6 +304,9 @@ defineFilter({
 Correct:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+import User from '#models/user'
+
 defineFilter({
   filterable: ['status'],
   model: User,
@@ -263,6 +324,8 @@ Source: docs/definitions/aggregates.mdx ("Unlocking aggregates — the model opt
 Wrong:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 defineFilter({
   filterable: ['status'],
   computed: { postCount: ({ alias }) => `(SELECT COUNT(*) FROM posts WHERE posts.author_id = ${alias}.id)` },
@@ -272,6 +335,9 @@ defineFilter({
 Correct:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+import User from '#models/user'
+
 defineFilter({
   filterable: ['status'],
   model: User, // or table: 'users'
@@ -330,12 +396,16 @@ Source: docs/definitions/computed.mdx ("How a computed filter is routed")
 Wrong:
 
 ```typescript
+import { resolveFieldAlias } from '@adonis-agora/filter'
+
 resolveFieldAlias({ a: 'b', b: 'c' }, 'a') // expecting 'c' — actually returns 'b'
 ```
 
 Correct:
 
 ```typescript
+import { resolveFieldAlias } from '@adonis-agora/filter'
+
 resolveFieldAlias({ a: 'c', b: 'c' }, 'a') // point aliases directly at real targets
 ```
 

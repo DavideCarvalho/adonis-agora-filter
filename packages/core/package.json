@@ -93,6 +93,7 @@
   "devDependencies": {
     "@adonis-agora/filter-client": "workspace:*",
     "@adonisjs/assembler": "8.6.0",
+    "@adonisjs/auth": "10.1.1",
     "@adonisjs/core": "7.7.0",
     "@adonisjs/lucid": "22.5.0",
     "@tanstack/intent": "0.5.6",
