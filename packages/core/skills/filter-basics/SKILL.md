@@ -89,14 +89,23 @@ and returns `{ page: 1, size: 25 }` for `query.paginate()`.
 same controller serves GET query strings and structured POST bodies:
 
 ```typescript
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+import type { HttpContext } from '@adonisjs/core/http'
+import { parseFilterRequest } from '@adonis-agora/filter'
 
-// GET — decoded query string
-const input = parseFilterRequest(request.qs())
+export default class UsersController {
+  // GET — decoded query string
+  async index({ request }: HttpContext) {
+    const input = parseFilterRequest(request.qs())
+    // ...applyFilter(query, input, config)
+  }
 
-// POST /search — the body may be the flat Spatie shape or the structured
-// object the client builder's .build() returns ({ filter: { where }, sort, paginate })
-const bodyInput = parseFilterRequest(request.body())
+  // POST /search — the body may be the flat Spatie shape or the structured
+  // object the client builder's .build() returns ({ filter: { where }, sort, paginate })
+  async search({ request }: HttpContext) {
+    const input = parseFilterRequest(request.body())
+    // ...applyFilter(query, input, config)
+  }
+}
 ```
 
 Source: `docs/guides/controllers.mdx`, `docs/guides/operators.mdx`
@@ -216,16 +225,33 @@ Source: `docs/guides/in-memory.mdx`
 Wrong:
 
 ```typescript
-const input = parseFilterRequest(request.qs())
-await User.query().paginate(input.page ?? 1, input.size ?? 25)
+import type { HttpContext } from '@adonisjs/core/http'
+import { parseFilterRequest } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const input = parseFilterRequest(request.qs())
+    return User.query().paginate(input.page ?? 1, input.size ?? 25)
+  }
+}
 ```
 
 Correct:
 
 ```typescript
-const query = User.query()
-const { page, size } = applyFilter(query, input, { allowed: ['name'], maxSize: 100 })
-const users = await query.paginate(page, size)
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilter, parseFilterRequest } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const input = parseFilterRequest(request.qs())
+    const query = User.query()
+    const { page, size } = applyFilter(query, input, { allowed: ['name'], maxSize: 100 })
+    return query.paginate(page, size)
+  }
+}
 ```
 
 `applyFilter` clamps size into `[1, maxSize]` and floors page at 1; values taken
@@ -239,18 +265,38 @@ Source: docs/getting-started.mdx ("Why pagination is returned, not applied"); do
 Wrong:
 
 ```typescript
+import type { HttpContext } from '@adonisjs/core/http'
+import { defineFilter } from '@adonis-agora/filter'
+import type User from '#models/user'
+
 export const userFilter = defineFilter({
   filterable: ['name', 'tenantId'], // client can now constrain tenantId too
-  tenant: { column: 'tenantId', resolve: (ctx) => ctx.tenantId },
+  tenant: {
+    column: 'tenantId',
+    resolve: (ctx) => {
+      const user: User = (ctx as HttpContext).auth.getUserOrFail()
+      return user.tenantId
+    },
+  },
 })
 ```
 
 Correct:
 
 ```typescript
+import type { HttpContext } from '@adonisjs/core/http'
+import { defineFilter } from '@adonis-agora/filter'
+import type User from '#models/user'
+
 export const userFilter = defineFilter({
   filterable: ['name'],
-  tenant: { column: 'tenantId', resolve: (ctx) => ctx.tenantId },
+  tenant: {
+    column: 'tenantId',
+    resolve: (ctx) => {
+      const user: User = (ctx as HttpContext).auth.getUserOrFail()
+      return user.tenantId
+    },
+  },
 })
 ```
 
@@ -266,6 +312,12 @@ Source: docs/definitions/index.mdx ("Tenant scope is un-tamperable"); docs/guide
 Wrong:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, { allowed: ['name'] })
 // ?search=fleet is silently skipped — no searchable columns declared
 ```
@@ -273,6 +325,12 @@ applyFilter(query, input, { allowed: ['name'] })
 Correct:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, {
   allowed: ['name'],
   searchable: ['name', 'email'],

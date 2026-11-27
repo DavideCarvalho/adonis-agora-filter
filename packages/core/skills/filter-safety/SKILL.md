@@ -42,7 +42,7 @@ testing it without a database.
 ```typescript
 // app/controllers/users_controller.ts
 import type { HttpContext } from '@adonisjs/core/http'
-import { parseFilterRequest, applyFilter } from '@adonis-agora/filter'
+import { parseFilterRequest, applyFilter, InvalidColumnFilterError } from '@adonis-agora/filter'
 import User from '#models/user'
 
 export default class UsersController {
@@ -69,9 +69,6 @@ export default class UsersController {
 }
 ```
 
-(Import `InvalidColumnFilterError` from `@adonis-agora/filter` alongside
-`parseFilterRequest` / `applyFilter`.)
-
 ## Core patterns
 
 ### 1. The AllowList has three forms
@@ -81,6 +78,12 @@ array everywhere a client can reach; use the predicate form for rules a flat
 list cannot express — e.g. whitelisting one hop into `posts` under a cap:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, {
   allowed: (field) => !field.includes('.') || /^posts\.[a-z]+$/i.test(field),
 })
@@ -126,6 +129,12 @@ rejected up front (dropped, or `InvalidColumnFilterError` → 400 under
 `throwOnInvalid`) instead of surfacing as Postgres cast errors:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, {
   allowed: ['advisorId', 'dayOfWeek', 'isRecurring'],
   fieldTypes: {
@@ -149,8 +158,12 @@ before building patterns. If you build an ILIKE pattern yourself (outside the
 adapter), do the same:
 
 ```typescript
+import db from '@adonisjs/lucid/services/db'
 import { escapeLike } from '@adonis-agora/filter'
 
+declare const prefix: string // straight from the request
+
+const qb = db.from('products')
 qb.whereILike('code', `${escapeLike(prefix)}%`)
 ```
 
@@ -191,12 +204,24 @@ Source: `docs/testing/index.mdx`, `docs/guides/testing.mdx`
 Wrong:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, { allowed: '*' })
 ```
 
 Correct:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, { allowed: ['name', 'email', 'status'] })
 ```
 
@@ -211,20 +236,40 @@ Source: docs/guides/filter-classes.mdx ("The allow-list is the security boundary
 Wrong:
 
 ```typescript
-const raw = parseFilterRequest(request.qs())
-query.whereHas('posts', (p) => applyColumnFilters(p, raw.filters ?? []))
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyColumnFilters, parseFilterRequest } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const raw = parseFilterRequest(request.qs())
+    const query = User.query()
+    query.whereHas('posts', (p) => applyColumnFilters(p, raw.filters ?? []))
+    return query
+  }
+}
 ```
 
 Correct:
 
 ```typescript
-const raw = parseFilterRequest(request.qs())
-// prune against a policy first (or validate fields yourself)…
-const scratch = User.query()
-applyFilter(scratch, raw, { allowed: ['title', 'status'] })
-query.whereHas('posts', (p) =>
-  applyColumnFilters(p, [{ field: 'title', operator: 'equals', value: 'Hi' }]),
-)
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyColumnFilters, applyFilter, parseFilterRequest } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const raw = parseFilterRequest(request.qs())
+    // prune against a policy first (or validate fields yourself)…
+    const scratch = User.query()
+    applyFilter(scratch, raw, { allowed: ['title', 'status'] })
+    const query = User.query()
+    query.whereHas('posts', (p) =>
+      applyColumnFilters(p, [{ field: 'title', operator: 'equals', value: 'Hi' }]),
+    )
+    return query
+  }
+}
 ```
 
 `applyColumnFilters` / `applySort` / `applySearch` trust their input — they
@@ -238,6 +283,12 @@ Source: docs/guides/lucid.mdx (low-level functions warning); docs/guides/relatio
 Wrong:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, { allowed: ['name', 'createdAt'] })
 // ?sort=-craetedAt does nothing, no error anywhere
 ```
@@ -268,6 +319,12 @@ Source: docs/guides/validation.mdx (throwOnInvalid)
 Wrong:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 // ?filter[isRecurring]=xyz → Postgres: invalid input syntax for type boolean → 500
 applyFilter(query, input, { allowed: ['isRecurring'] })
 ```
@@ -275,6 +332,12 @@ applyFilter(query, input, { allowed: ['isRecurring'] })
 Correct:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+const query = User.query()
+
 applyFilter(query, input, {
   allowed: ['isRecurring'],
   fieldTypes: { isRecurring: { kind: 'boolean' } }, // rejected up front → drop or 400
@@ -291,13 +354,23 @@ Source: docs/definitions/index.mdx (Field types & value coercion); docs/guides/o
 Wrong:
 
 ```typescript
+import db from '@adonisjs/lucid/services/db'
+
+declare const userInput: string // straight from the request
+
+const qb = db.from('users')
 qb.whereILike('name', `%${userInput}%`) // userInput '%%' widens the match arbitrarily
 ```
 
 Correct:
 
 ```typescript
+import db from '@adonisjs/lucid/services/db'
 import { escapeLike } from '@adonis-agora/filter'
+
+declare const userInput: string // straight from the request
+
+const qb = db.from('users')
 qb.whereILike('name', `%${escapeLike(userInput)}%`)
 ```
 

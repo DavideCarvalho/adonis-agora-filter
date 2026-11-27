@@ -9,3 +9,13 @@ allowBuilds:
   '@biomejs/biome': true
   '@swc/core': true
   esbuild: true
+
+# Intent (`intent validate`) typechecks the skill examples from the repo root, so hoist the
+# packages they import to the root node_modules: the examples then load their types
+# (`HttpContext`, `ctx.auth`, Lucid's query builder, TanStack Table state) from the same copies the
+# library builds against. Install-time only: no published package changes.
+publicHoistPattern:
+  - "@adonisjs/auth"
+  - "@adonisjs/core"
+  - "@adonisjs/lucid"
+  - "@tanstack/table-core"

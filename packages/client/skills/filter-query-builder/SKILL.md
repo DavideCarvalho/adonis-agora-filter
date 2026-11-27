@@ -94,6 +94,8 @@ Source: `docs/guides/client.mdx`
 group node. Sort, search, include, distinct, and extras fill the envelope:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+
 filterQuery()
   .equals('status', 'active')
   .or((q) => q.contains('name', 'sync').contains('email', 'sync'))
@@ -153,6 +155,10 @@ Table state onto it:
 import { useSyncExternalStore, useRef } from 'react'
 import { filterQuery } from '@adonis-agora/filter-client'
 import { applyTanstackTableState } from '@adonis-agora/filter-client/tanstack'
+import type { ColumnFiltersState, PaginationState, SortingState } from '@tanstack/table-core'
+
+// the table's state slices (v8: table.getState(); v9: table.store.state)
+declare const state: { columnFilters: ColumnFiltersState; sorting: SortingState; pagination: PaginationState }
 
 function useFilterQuery() {
   const ref = useRef(filterQuery())
@@ -162,9 +168,9 @@ function useFilterQuery() {
 }
 
 const body = applyTanstackTableState(filterQuery(), {
-  columnFilters: table.getState().columnFilters,
-  sorting: table.getState().sorting,
-  pagination: table.getState().pagination,
+  columnFilters: state.columnFilters,
+  sorting: state.sorting,
+  pagination: state.pagination,
   resolveOperator: (id) => (id === 'createdAt' ? 'gte' : 'iContains'),
   fields: ['name', 'status', 'createdAt'], // optional allowlist; others dropped
 }).build()
@@ -183,12 +189,16 @@ Source: `docs/guides/client.mdx`
 Wrong:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+
 filterQuery().gte('age', 18).lte('age', 65).toQueryString() // only lte survives
 ```
 
 Correct:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+
 filterQuery().between('age', 18, 65).toQueryString()
 // or accumulate both bounds:
 filterQuery().addGte('age', 18).addLte('age', 65).toQueryString()
@@ -204,17 +214,28 @@ Source: docs/guides/client.mdx ("where replaces… add accumulates")
 Wrong:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+import type { PaginationState } from '@tanstack/table-core'
+
+declare const pagination: PaginationState // the table's pagination state (v8: table.getState().pagination)
+
 // .page() is 1-based: pageIndex 0 throws a RangeError, pageIndex 1 asks for page 1 again
-filterQuery().page(table.getState().pagination.pageIndex, 25).toQueryString()
+filterQuery().page(pagination.pageIndex, 25).toQueryString()
 ```
 
 Correct:
 
 ```typescript
+import { applyTanstackTableState } from '@adonis-agora/filter-client/tanstack'
+import { filterQuery } from '@adonis-agora/filter-client'
+import type { PaginationState } from '@tanstack/table-core'
+
+declare const pagination: PaginationState // the table's pagination state (v8: table.getState().pagination)
+
 // the adapter converts: pageIndex 0 → page=1
-applyTanstackTableState(filterQuery(), { pagination: table.getState().pagination }).toQueryString()
+applyTanstackTableState(filterQuery(), { pagination }).toQueryString()
 // …or convert yourself
-filterQuery().page(table.getState().pagination.pageIndex + 1, 25).toQueryString()
+filterQuery().page(pagination.pageIndex + 1, 25).toQueryString()
 // and map the response back with tanstackPaginationFromMeta(meta)
 ```
 
@@ -229,6 +250,11 @@ Source: docs/guides/client.mdx (Pages are 1-based; TanStack Table sync)
 Wrong:
 
 ```typescript
+import { filterQueryTyped } from '@adonis-agora/filter-client'
+
+declare const untrustedField: string, value: unknown // e.g. a grid column id and its filter value
+
+const builder = filterQueryTyped<'name' | 'status'>()
 // assuming fields are safe because the typed builder compiled
 builder.whereDynamic(untrustedField, 'equals', value)
 ```
@@ -236,6 +262,14 @@ builder.whereDynamic(untrustedField, 'equals', value)
 Correct:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+import { applyTanstackTableState } from '@adonis-agora/filter-client/tanstack'
+import type { ColumnFiltersState, SortingState } from '@tanstack/table-core'
+
+declare const state: { columnFilters: ColumnFiltersState; sorting: SortingState } // the table's state
+
+const ALLOWED_FIELDS = ['name', 'status'] // the server's allow-list
+
 // keep the server allow-list authoritative; mirror it here via `fields`
 applyTanstackTableState(filterQuery(), { ...state, fields: ALLOWED_FIELDS })
 ```
@@ -251,12 +285,20 @@ Source: docs/guides/client.mdx ("The server allow-list is still the real boundar
 Wrong:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+import { assert } from 'vitest'
+
+const qs = filterQuery().gte('age', 18).sortDesc('createdAt').toQueryString()
 assert.equal(qs, 'filter[age][gte]=18&sort=-createdAt')
 ```
 
 Correct:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+import { assert } from 'vitest'
+
+const qs = filterQuery().gte('age', 18).sortDesc('createdAt').toQueryString()
 assert.equal(qs, 'filter%5Bage%5D[gte]=18&sort=-createdAt')
 // or compare decodeURIComponent(qs)
 ```
@@ -272,6 +314,8 @@ Source: docs/guides/client.mdx ("Why the output has %5B in it")
 Wrong:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+
 filterQuery().equals('a', 1).or((q) => q.contains('n', 'x')).toFlatObject()
 // the OR group silently disappears
 ```
@@ -279,6 +323,8 @@ filterQuery().equals('a', 1).or((q) => q.contains('n', 'x')).toFlatObject()
 Correct:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+
 filterQuery().equals('a', 1).or((q) => q.contains('n', 'x')).toQueryString()
 // falls back to indexed where[i] notation, groups intact
 ```
@@ -293,6 +339,11 @@ Source: docs/guides/client.mdx (AND/OR groups callout)
 Wrong:
 
 ```typescript
+import { type ColumnFilter, filterQuery } from '@adonis-agora/filter-client'
+
+const builder = filterQuery()
+const myFilter: ColumnFilter = { field: 'age', operator: 'gte', value: 18 }
+
 const snap = builder.getSnapshot()
 snap.filter.where.push(myFilter) // poisons the cached snapshot, no re-render
 ```
@@ -300,6 +351,9 @@ snap.filter.where.push(myFilter) // poisons the cached snapshot, no re-render
 Correct:
 
 ```typescript
+import { filterQuery } from '@adonis-agora/filter-client'
+
+const builder = filterQuery()
 builder.gte('age', 18) // mutate through the builder — bumps version, notifies subscribers
 ```
 

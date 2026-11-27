@@ -155,7 +155,12 @@ Source: `docs/codegen/index.mdx`, `docs/definitions/index.mdx`
 field-path lists if you're building your own artifact:
 
 ```typescript
-import { filterableFieldPaths } from '@adonis-agora/filter'
+import { defineFilter, filterableFieldPaths } from '@adonis-agora/filter'
+
+const peopleSpec = defineFilter({
+  filterable: ['age', 'name', 'status'],
+  relations: { posts: { filterable: ['title', 'published'] } },
+})
 
 const paths = filterableFieldPaths(peopleSpec)
 // ['age', 'name', 'status', 'posts.title', 'posts.published']
@@ -211,12 +216,16 @@ Source: docs/codegen/index.mdx (banner option, Step 4)
 Wrong:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 defineFilter({ filterable: '*' }) // PeopleFilterFields falls back to string
 ```
 
 Correct:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 defineFilter({ filterable: ['age', 'name', 'status'] }) // enumerable literal union
 ```
 
@@ -230,6 +239,11 @@ Source: docs/codegen/index.mdx (filterableFieldPaths callout)
 Wrong:
 
 ```typescript
+import { defineFilter, generateFilterClient } from '@adonis-agora/filter'
+import { peopleFilterQuery } from '#generated/filters/people_filter_client'
+
+const spec = defineFilter({ filterable: ['age', 'name', 'status'] })
+
 generateFilterClient(spec, { name: 'people' })
 peopleFilterQuery().gte('name', 5) // compiles — gte gated to orderable fields only
 ```
@@ -237,6 +251,10 @@ peopleFilterQuery().gte('name', 5) // compiles — gte gated to orderable fields
 Correct:
 
 ```typescript
+import { defineFilter, generateFilterClient } from '@adonis-agora/filter'
+
+const spec = defineFilter({ filterable: ['age', 'name', 'status'] })
+
 generateFilterClient(spec, {
   name: 'people',
   fieldTypes: { age: { kind: 'number' }, status: { enumValues: ['active', 'inactive'] } },

@@ -79,6 +79,9 @@ limited to `size + 1` so `buildCursorPage` can detect a next page:
 
 ```typescript
 import { applyCursor, buildCursorPage } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const cursor: string | undefined // ?after=<the previous page's meta.nextCursor>
 
 const query = User.query()
 const resolved = applyCursor(
@@ -131,16 +134,27 @@ Rank rows nearest-first by pgvector distance to a query embedding — supplied i
 code, never through the URL:
 
 ```typescript
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilterFromRequest, defineFilter } from '@adonis-agora/filter'
+import Doc from '#models/doc'
+import embeddingService from '#services/embedding_service'
+
 export const docFilter = defineFilter({
   filterable: ['status'],
   vectorSimilarity: { column: 'embedding', metric: 'cosine', threshold: 0.25, topK: 20 },
 })
 
 // controller — compute the embedding, then pass it in options:
-const embedding = await embeddingService.embed(q)
-const { page, size } = applyFilterFromRequest(query, docFilter, ctx, {
-  vectorSimilarity: embedding,
-})
+export default class DocsController {
+  async index(ctx: HttpContext) {
+    const query = Doc.query()
+    const embedding: number[] = await embeddingService.embed(ctx.request.input('q'))
+    const { page, size } = applyFilterFromRequest(query, docFilter, ctx, {
+      vectorSimilarity: embedding,
+    })
+    return query.paginate(page, size)
+  }
+}
 ```
 
 Similarity ordering lands before user sort (sort becomes the tiebreaker) and
@@ -156,9 +170,18 @@ Source: `docs/search/vector-similarity.mdx`
 field, and applies itself:
 
 ```typescript
-const input = parseFilterRequest(request.qs())
-applyFilter(query, input, { allowed: ['status', 'baseId'] })
-const rows = await query.select('status') // DISTINCT already applied
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilter, parseFilterRequest } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export default class UserStatusesController {
+  async index({ request }: HttpContext) {
+    const input = parseFilterRequest(request.qs())
+    const query = User.query()
+    applyFilter(query, input, { allowed: ['status', 'baseId'] })
+    return query.select('status') // DISTINCT already applied
+  }
+}
 ```
 
 ### 5. Richer request shapes
@@ -169,15 +192,20 @@ import {
   resolveInputFromRequest,
   normalizeInput,
 } from '@adonis-agora/filter'
+import type { HttpContext } from '@adonisjs/core/http'
 
-// Spatie/JSON:API superset: includes, sparse fieldsets, cursor page params
-const input = parseSpatieRequest(request.qs())
+export default class UsersController {
+  async search({ request }: HttpContext) {
+    // Spatie/JSON:API superset: includes, sparse fieldsets, cursor page params
+    const input = parseSpatieRequest(request.qs())
 
-// source filters from body (POST /search), auto-merging query+body on writes
-const raw = resolveInputFromRequest(request, 'auto')
+    // source filters from body (POST /search), auto-merging query+body on writes
+    const raw = resolveInputFromRequest(request, 'auto')
 
-// snake_case API → camelCase columns (top-level keys only)
-normalizeInput({ company_id: 5 }, { normalizer: 'camelCase' })
+    // snake_case API → camelCase columns (top-level keys only)
+    normalizeInput({ company_id: 5 }, { normalizer: 'camelCase' })
+  }
+}
 ```
 
 Source: `docs/definitions/request-input.mdx`
@@ -189,6 +217,14 @@ Source: `docs/definitions/request-input.mdx`
 Wrong:
 
 ```typescript
+import { applyCursor, buildCursorPage } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const cursor: string | undefined // ?after=<the previous page's meta.nextCursor>
+
+const query = User.query()
+const resolved = applyCursor(query, { after: cursor, first: 20 }, { allowed: ['name'], primaryKey: 'id' })
+
 const rows = await query.exec()
 const page = buildCursorPage(rows, resolved) // Lucid model instances
 ```
@@ -196,6 +232,14 @@ const page = buildCursorPage(rows, resolved) // Lucid model instances
 Correct:
 
 ```typescript
+import { applyCursor, buildCursorPage } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const cursor: string | undefined // ?after=<the previous page's meta.nextCursor>
+
+const query = User.query()
+const resolved = applyCursor(query, { after: cursor, first: 20 }, { allowed: ['name'], primaryKey: 'id' })
+
 const rows = await query.exec()
 const page = buildCursorPage(rows.map((r) => r.serialize()), resolved)
 ```
@@ -211,6 +255,11 @@ Source: docs/pagination/index.mdx ("Feed buildCursorPage plain rows")
 Wrong:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+
 applyFilter(User.query(), input, { allowed: ['status', 'posts.title'] })
 // ?distinct=posts.title → dropped / InvalidColumnFilterError under throwOnInvalid
 ```
@@ -218,6 +267,11 @@ applyFilter(User.query(), input, { allowed: ['status', 'posts.title'] })
 Correct:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+
 // distinct only names root-table columns: ?distinct=status
 applyFilter(User.query(), input, { allowed: ['status'] })
 ```
@@ -234,20 +288,40 @@ Source: docs/guides/lucid.mdx ("distinct takes root-table columns only")
 Wrong:
 
 ```typescript
-const input = parseSpatieRequest(request.qs())
-applyFilter(query, input, { allowed: ['name'] })
-await query.paginate(1, 25) // ?include=posts ignored — posts never loaded
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilter, parseSpatieRequest } from '@adonis-agora/filter'
+import User from '#models/user'
+
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const input = parseSpatieRequest(request.qs())
+    const query = User.query()
+    applyFilter(query, input, { allowed: ['name'] })
+    return query.paginate(1, 25) // ?include=posts ignored — posts never loaded
+  }
+}
 ```
 
 Correct:
 
 ```typescript
-const input = parseSpatieRequest(request.qs())
-applyFilter(query, input, { allowed: ['name'] })
-for (const relation of input.include ?? []) {
-  if (PRELOADABLE.includes(relation)) query.preload(relation as any)
+import type { HttpContext } from '@adonisjs/core/http'
+import { applyFilter, parseSpatieRequest } from '@adonis-agora/filter'
+import User from '#models/user'
+
+const PRELOADABLE = ['posts', 'role'] // the relations this endpoint may eager-load
+
+export default class UsersController {
+  async index({ request }: HttpContext) {
+    const input = parseSpatieRequest(request.qs())
+    const query = User.query()
+    applyFilter(query, input, { allowed: ['name'] })
+    for (const relation of input.include ?? []) {
+      if (PRELOADABLE.includes(relation)) query.preload(relation as any)
+    }
+    return query.paginate(1, 25)
+  }
 }
-await query.paginate(1, 25)
 ```
 
 `include` and sparse fieldset `select` are parsed but deliberately applied by no
@@ -261,13 +335,18 @@ Source: docs/guides/client.mdx ("include is a request, not an action"); docs/def
 Wrong:
 
 ```typescript
-defineFilter({ fullText: { column: 'embedding' } }) // tsvector @@ against a vector column
+import { defineFilter } from '@adonis-agora/filter'
+
+defineFilter({ filterable: ['status'], fullText: { column: 'embedding' } }) // tsvector @@ against a vector column
 ```
 
 Correct:
 
 ```typescript
+import { defineFilter } from '@adonis-agora/filter'
+
 defineFilter({
+  filterable: ['status'],
   vectorSimilarity: { column: 'embedding', metric: 'cosine' }, // embeddings rank nearest-first
   // fullText: { column: 'search_vector' },                    // keywords match lexemes
 })
@@ -285,6 +364,13 @@ Source: docs/search/index.mdx ("Full-text search ≠ vector similarity")
 Wrong:
 
 ```typescript
+import { applyFilter, type FilterInput } from '@adonis-agora/filter'
+import User from '#models/user'
+
+declare const input: FilterInput // parseFilterRequest(request.qs())
+
+const query = User.query()
+const { page, size } = applyFilter(query, input, { allowed: ['status'] })
 const result = await query.distinct('status').paginate(page, size)
 result.totalCount // counts UN-deduped rows
 ```
@@ -305,13 +391,17 @@ Source: docs/guides/lucid.mdx (distinct/paginate total callout)
 Wrong:
 
 ```typescript
-defineFilter({ fullText: { column: ['title', 'body'], columnKind: 'text' } }) // re-tokenizes every row
+import { defineFilter } from '@adonis-agora/filter'
+
+defineFilter({ filterable: ['status'], fullText: { column: ['title', 'body'], columnKind: 'text' } }) // re-tokenizes every row
 ```
 
 Correct:
 
 ```typescript
-defineFilter({ fullText: { column: 'search_vector', columnKind: 'tsvector' } }) // GIN-indexable
+import { defineFilter } from '@adonis-agora/filter'
+
+defineFilter({ filterable: ['status'], fullText: { column: 'search_vector', columnKind: 'tsvector' } }) // GIN-indexable
 ```
 
 Query-time `to_tsvector` cannot use an index — fine for small tables, a
