@@ -18,7 +18,7 @@ description: >
 metadata:
   type: core
   library: "@adonis-agora/filter-client"
-  library_version: "0.2.1"
+  library_version: "1.0.0"
 sources:
   - "DavideCarvalho/adonis-filter:docs/guides/client.mdx"
   - "DavideCarvalho/adonis-filter:docs/getting-started.mdx"
