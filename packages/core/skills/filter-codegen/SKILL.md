@@ -6,7 +6,7 @@ description: >
   transform, generateFilterClients(manifest), the make:filter-client ace command
   with a FilterClientManifest in config/filter.ts, emitted artifacts
   (<Name>FilterFields union, <Name>FilterFieldTypes interface,
-  <Name>FilterFieldMeta, <Name>FilterQuery factory), fieldTypes operator
+  <name>FilterMeta, <name>FilterQuery() factory), fieldTypes operator
   narrowing (kind | enumValues | typeRef | nullable), maxDepth/banner/clientModule
   options, filterableFieldPaths/sortableFieldPaths enumerators, and adonisrc.ts
   commands-barrel registration. Use when sharing one field allow-list between
@@ -211,7 +211,7 @@ Source: docs/codegen/index.mdx (banner option, Step 4)
 Wrong:
 
 ```typescript
-defineFilter({ filterable: ['*'] }) // PeopleFilterFields falls back to string
+defineFilter({ filterable: '*' }) // PeopleFilterFields falls back to string
 ```
 
 Correct:

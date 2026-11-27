@@ -80,8 +80,9 @@ limited to `size + 1` so `buildCursorPage` can detect a next page:
 ```typescript
 import { applyCursor, buildCursorPage } from '@adonis-agora/filter'
 
+const query = User.query()
 const resolved = applyCursor(
-  User.query(),
+  query,
   { sort: [{ field: 'name', direction: 'asc' }], after: cursor, first: 20 },
   { allowed: ['name'], primaryKey: 'id' },
 )

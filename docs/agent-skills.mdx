@@ -1,0 +1,57 @@
+---
+title: AI agent skills
+description: The agent skills @adonis-agora/filter and @adonis-agora/filter-client ship for coding agents (Claude Code, Cursor, Copilot, Codex) and how to load them with TanStack Intent.
+icon: Bot
+---
+
+`@adonis-agora/filter` and `@adonis-agora/filter-client` ship [Agent Skills](https://agentskills.io):
+short `SKILL.md` files that tell a coding agent how to use the library, the patterns to follow and
+the mistakes to avoid. They live inside the npm package (its `skills/` folder), so they always match
+the version you installed: upgrade the package and the skills come with it.
+
+## Skills in this package
+
+| Skill | Package | Load it when |
+| --- | --- | --- |
+| `filter-basics` | `@adonis-agora/filter` | building a filtered list endpoint, choosing free functions vs macros, or filtering a plain array with the same wire format |
+| `filter-definitions` | `@adonis-agora/filter` | authoring a `defineFilter` policy, exposing relation, computed or aggregate fields, or renaming public field names |
+| `filter-safety` | `@adonis-agora/filter` | exposing filters to untrusted clients, turning silent drops into 400s, or writing filter unit tests |
+| `filter-querying` | `@adonis-agora/filter` | serving cursor pages, ranking by full-text or embeddings, projecting distinct values, or reading filters from a POST body |
+| `filter-codegen` | `@adonis-agora/filter` | generating a typed client from a spec with `make:filter-client`, or regenerating it after spec changes |
+| `filter-query-builder` | `@adonis-agora/filter-client` | building filter requests client-side, typing queries against known fields, or syncing UI / TanStack Table state |
+
+## Load them with TanStack Intent
+
+[TanStack Intent](https://github.com/TanStack/intent) finds the skills in your installed packages
+and tells your agent when to load them.
+
+```bash
+npm i -D @tanstack/intent    # pnpm add -D @tanstack/intent
+npx intent install
+```
+
+The first `intent install` runs in a terminal: it asks which packages' skills to allow (saved as
+`intent.skills` in your `package.json`) and writes a short skill-loading block into `AGENTS.md`
+(or into the `CLAUDE.md`, `.cursorrules` or `.github/copilot-instructions.md` that already carries
+it). To allow every Agora library without the prompt, for example in CI, add this to
+`package.json` first:
+
+```json
+{
+  "intent": { "skills": ["@adonis-agora/*"] }
+}
+```
+
+Then your agent, or you, can list and load them:
+
+```bash
+npx intent list
+npx intent load @adonis-agora/filter#filter-basics
+```
+
+`npx intent hooks install` adds hooks that remind Claude Code, Codex and Copilot to load a matching
+skill before editing. Without Intent, point your agent at
+`node_modules/@adonis-agora/filter/skills/<skill>/SKILL.md` (or
+`node_modules/@adonis-agora/filter-client/skills/<skill>/SKILL.md`).
+
+See [AI agent skills](/docs/agent-skills) for every Agora library that ships skills.

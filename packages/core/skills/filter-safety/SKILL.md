@@ -6,7 +6,7 @@ description: >
   forms ('*' | string[] | predicate), throwOnInvalid + InvalidColumnFilterError
   mapped to HTTP 400, built-in structural validation (validateColumnFilters,
   MAX_FILTER_DEPTH, field charset, operator aliases), query-string value
-  coercion with fieldTypes/coerceFilterValue, escapeLike for hand-built ILIKE
+  coercion with fieldTypes, escapeLike for hand-built ILIKE
   patterns, the trust boundary of low-level applyColumnFilters/applySort/
   applySearch inside whereHas callbacks, layering VineJS for domain validation,
   and unit-testing allow-listing with @adonis-agora/filter/testing
