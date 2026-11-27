@@ -15,7 +15,7 @@ description: >
 metadata:
   type: core
   library: "@adonis-agora/filter"
-  library_version: "0.7.0"
+  library_version: "1.0.1"
   framework: adonisjs
 sources:
   - "DavideCarvalho/adonis-filter:docs/codegen/index.mdx"
