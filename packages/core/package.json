@@ -94,7 +94,7 @@
     "@adonis-agora/filter-client": "workspace:*",
     "@adonisjs/assembler": "8.6.0",
     "@adonisjs/core": "7.7.0",
-    "@adonisjs/lucid": "22.4.2",
+    "@adonisjs/lucid": "22.5.0",
     "@tanstack/intent": "0.5.6",
     "@types/luxon": "3.7.6",
     "@types/node": "26.6.6",
