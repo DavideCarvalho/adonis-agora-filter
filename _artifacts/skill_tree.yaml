@@ -39,6 +39,8 @@ skills:
       - 'DavideCarvalho/adonis-filter:docs/guides/filter-classes.mdx'
       - 'DavideCarvalho/adonis-filter:docs/guides/provider.mdx'
       - 'DavideCarvalho/adonis-filter:docs/guides/operators.mdx'
+      - 'DavideCarvalho/adonis-filter:docs/guides/in-memory.mdx'
+      - 'DavideCarvalho/adonis-filter:docs/definitions/index.mdx'
 
   - name: 'Filter safety'
     slug: 'filter-safety'
@@ -56,6 +58,9 @@ skills:
       - 'DavideCarvalho/adonis-filter:docs/guides/validation.mdx'
       - 'DavideCarvalho/adonis-filter:docs/guides/operators.mdx'
       - 'DavideCarvalho/adonis-filter:docs/testing/index.mdx'
+      - 'DavideCarvalho/adonis-filter:docs/guides/testing.mdx'
+      - 'DavideCarvalho/adonis-filter:docs/guides/lucid.mdx'
+      - 'DavideCarvalho/adonis-filter:docs/guides/relations.mdx'
       - 'DavideCarvalho/adonis-filter:docs/definitions/index.mdx'
 
   - name: 'Filter definitions'

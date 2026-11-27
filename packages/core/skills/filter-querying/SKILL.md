@@ -236,7 +236,7 @@ Wrong:
 ```typescript
 const input = parseSpatieRequest(request.qs())
 applyFilter(query, input, { allowed: ['name'] })
-return query.paginate(1, 25) // ?include=posts ignored — posts never loaded
+await query.paginate(1, 25) // ?include=posts ignored — posts never loaded
 ```
 
 Correct:
@@ -247,7 +247,7 @@ applyFilter(query, input, { allowed: ['name'] })
 for (const relation of input.include ?? []) {
   if (PRELOADABLE.includes(relation)) query.preload(relation as any)
 }
-return query.paginate(1, 25)
+await query.paginate(1, 25)
 ```
 
 `include` and sparse fieldset `select` are parsed but deliberately applied by no
@@ -305,13 +305,13 @@ Source: docs/guides/lucid.mdx (distinct/paginate total callout)
 Wrong:
 
 ```typescript
-fullText: { column: ['title', 'body'], columnKind: 'text' } // re-tokenizes every row
+defineFilter({ fullText: { column: ['title', 'body'], columnKind: 'text' } }) // re-tokenizes every row
 ```
 
 Correct:
 
 ```typescript
-fullText: { column: 'search_vector', columnKind: 'tsvector' } // GIN-indexable
+defineFilter({ fullText: { column: 'search_vector', columnKind: 'tsvector' } }) // GIN-indexable
 ```
 
 Query-time `to_tsvector` cannot use an index — fine for small tables, a
