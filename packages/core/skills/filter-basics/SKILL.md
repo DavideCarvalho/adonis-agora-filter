@@ -25,6 +25,7 @@ sources:
   - "DavideCarvalho/adonis-filter:docs/guides/provider.mdx"
   - "DavideCarvalho/adonis-filter:docs/guides/operators.mdx"
   - "DavideCarvalho/adonis-filter:docs/guides/in-memory.mdx"
+  - "DavideCarvalho/adonis-filter:docs/definitions/index.mdx"
 ---
 
 # Filter basics: parse a request, apply it to a Lucid query
@@ -127,14 +128,17 @@ export const userFilter = defineFilter({
 
 ```typescript
 // app/controllers/users_controller.ts
+import type { HttpContext } from '@adonisjs/core/http'
 import { applyFilterFromRequest } from '@adonis-agora/filter'
 import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
-async index(ctx: HttpContext) {
-  const query = User.query()
-  const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
-  return query.paginate(page, size)
+export default class UsersController {
+  async index(ctx: HttpContext) {
+    const query = User.query()
+    const { page, size } = applyFilterFromRequest(query, userFilter, ctx)
+    return query.paginate(page, size)
+  }
 }
 ```
 
@@ -152,10 +156,10 @@ import { userFilter } from '#filters/user_filter'
 import User from '#models/user'
 
 // ctx read from AsyncLocalStorage inside a request
-return User.query().where('active', true).applyFilterFromRequest(userFilter)
+const users = await User.query().where('active', true).applyFilterFromRequest(userFilter)
 
 // filter + paginate in one terminal call
-return User.query().filterPaginate(userFilter)
+const paginated = await User.query().filterPaginate(userFilter)
 ```
 
 `filterPaginate` returns Lucid's paginator but reads the page before the total:
@@ -185,7 +189,7 @@ same input through `@adonis-agora/filter/in-memory`. `collection.query(rows)` is
 it unchanged; the builder evaluates the calls with Postgres semantics (ILIKE,
 three-valued NULLs, NULLS LAST asc / FIRST desc, EXISTS for to-many paths).
 
-```typescript
+```typescript no-check
 import { defineCollection, filterInMemory } from '@adonis-agora/filter/in-memory'
 
 const users = defineCollection<UserRow>({
@@ -221,7 +225,7 @@ Correct:
 ```typescript
 const query = User.query()
 const { page, size } = applyFilter(query, input, { allowed: ['name'], maxSize: 100 })
-return query.paginate(page, size)
+const users = await query.paginate(page, size)
 ```
 
 `applyFilter` clamps size into `[1, maxSize]` and floors page at 1; values taken

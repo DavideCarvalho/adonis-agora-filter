@@ -34,7 +34,7 @@ of the spec: string in, string out, no AST walk, no reflection.
 
 Register the command barrel, declare a manifest, run the command:
 
-```typescript
+```typescript no-check
 // adonisrc.ts
 {
   commands: [
@@ -176,7 +176,7 @@ Wrong:
 
 Correct:
 
-```typescript
+```typescript no-check
 { commands: [() => import('@adonis-agora/filter/commands')] }
 ```
 

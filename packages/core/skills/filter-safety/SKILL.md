@@ -23,7 +23,10 @@ sources:
   - "DavideCarvalho/adonis-filter:docs/guides/validation.mdx"
   - "DavideCarvalho/adonis-filter:docs/guides/operators.mdx"
   - "DavideCarvalho/adonis-filter:docs/testing/index.mdx"
+  - "DavideCarvalho/adonis-filter:docs/guides/testing.mdx"
   - "DavideCarvalho/adonis-filter:docs/guides/lucid.mdx"
+  - "DavideCarvalho/adonis-filter:docs/guides/relations.mdx"
+  - "DavideCarvalho/adonis-filter:docs/definitions/index.mdx"
 ---
 
 # Filter safety: the allow-list is the security boundary
@@ -95,13 +98,16 @@ both structural failures and allow-list rejections surface as
 
 ```typescript
 // app/exceptions/handler.ts
+import { ExceptionHandler, type HttpContext } from '@adonisjs/core/http'
 import { InvalidColumnFilterError } from '@adonis-agora/filter'
 
-async handle(error: unknown, ctx: HttpContext) {
-  if (error instanceof InvalidColumnFilterError) {
-    return ctx.response.badRequest({ message: error.message })
+export default class HttpExceptionHandler extends ExceptionHandler {
+  async handle(error: unknown, ctx: HttpContext) {
+    if (error instanceof InvalidColumnFilterError) {
+      return ctx.response.badRequest({ message: error.message })
+    }
+    return super.handle(error, ctx)
   }
-  return super.handle(error, ctx)
 }
 ```
 
@@ -238,7 +244,7 @@ applyFilter(query, input, { allowed: ['name', 'createdAt'] })
 
 Correct:
 
-```typescript
+```typescript no-check
 try {
   const { page, size } = applyFilter(query, input, {
     allowed: ['name', 'createdAt'],
